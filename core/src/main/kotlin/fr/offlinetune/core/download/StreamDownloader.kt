@@ -97,6 +97,10 @@ class StreamDownloader(
                 last = e
             } catch (e: NetworkLost) {
                 last = e
+            } catch (e: fr.offlinetune.core.model.HttpError) {
+                // Busy / overloaded servers are retried; other refusals (403, 404…) are final.
+                if (e.code < 500 && e.code != 429) throw e
+                last = e
             }
             if (attempt < retries - 1) delay(retryDelayMs * (attempt + 1))
         }

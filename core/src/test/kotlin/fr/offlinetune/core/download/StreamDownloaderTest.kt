@@ -103,4 +103,20 @@ class StreamDownloaderTest {
             assertTrue(progress.size >= 3)
         }
     }
+
+    @Test fun `a 503 on one segment is retried`() = runBlocking {
+        var seg0Calls = 0
+        MockWebServer().use { s ->
+            s.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/p/l.m3u8" -> MockResponse().setBody("#EXTM3U\n#EXTINF:1.0,\ns0.m4s\n#EXT-X-ENDLIST\n")
+                    "/p/s0.m4s" -> if (seg0Calls++ == 0) MockResponse().setResponseCode(503) else MockResponse().setBody("OK")
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+            val dest = File(tmp, "r.m4a")
+            StreamDownloader(retryDelayMs = 1).download(ResolvedStream(s.url("/p/l.m3u8").toString(), fmt, 1, true, null), dest) {}
+            assertEquals("OK", dest.readText())
+        }
+    }
 }
