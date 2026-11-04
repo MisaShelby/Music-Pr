@@ -37,6 +37,16 @@ class SongGrouperTest {
         assertEquals("Discovery", s.album)
     }
 
+    @Test fun `artist - title uploads group with catalogue songs`() {
+        val songs = SongGrouper.group(listOf(
+            hit(Provider.DEEZER, "One More Time", 320),
+            hit(Provider.YOUTUBE_MUSIC, "Daft Punk - One More Time (Official Video)", 322, artist = "Daft Punk"),
+            hit(Provider.SOUNDCLOUD, "Daft Punk - One More Time", 321, artist = "DaftPunkVEVO"),
+        ))
+        assertEquals(1, songs.size, songs.toString())
+        assertEquals("One More Time", songs[0].title)
+    }
+
     @Test fun `first appearance order is kept`() {
         val songs = SongGrouper.group(listOf(hit(Provider.DEEZER, "B", 100), hit(Provider.DEEZER, "A", 200), hit(Provider.APPLE_MUSIC, "B", 100)))
         assertEquals(listOf("B", "A"), songs.map { it.title })

@@ -73,7 +73,7 @@ fun SourcesScreen(padding: PaddingValues, song: SongResult, sources: SongSources
         sources.downloadable.forEach { o ->
             SourceRow(
                 badge = { PlatformBadge(o.provider, 34.dp) },
-                title = if (o.isMatch) "Correspondance YouTube" else o.provider.label,
+                title = if (o.isMatch) "Correspondance YouTube" else o.label,
                 subtitle = "${o.format.label()} · paroles ${if (o.hasLyrics) "✓" else "✗"}",
                 action = "Choisir", strongAction = true,
             ) { onChoose(o) }

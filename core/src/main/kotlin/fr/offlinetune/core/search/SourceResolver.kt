@@ -20,6 +20,7 @@ data class DownloadOption(
     /** Found by matching on YouTube because the song was only on paid platforms. */
     val isMatch: Boolean,
     val hasLyrics: Boolean,
+    val label: String = provider.label,
 )
 
 data class SongSources(val downloadable: List<DownloadOption>, val listenOnly: List<ProviderHit>, val message: String?)
@@ -34,7 +35,7 @@ class SourceResolver(private val newPipe: NewPipeSource, private val lyrics: Lyr
         val direct = song.hits.values.filter { it.provider.downloadable }
         var options = direct.mapNotNull { h ->
             runCatching { newPipe.bestStream(h.url) }.getOrNull()?.let { s ->
-                DownloadOption(h.provider, h.url, h.title, h.artist, h.durationSec, s.format, isMatch = false, hasLyrics = false)
+                DownloadOption(h.provider, h.url, h.title, h.artist, h.durationSec, s.format, isMatch = false, hasLyrics = false, label = h.label)
             }
         }
         if (options.isEmpty()) {

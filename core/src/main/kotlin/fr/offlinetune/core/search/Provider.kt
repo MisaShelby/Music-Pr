@@ -21,6 +21,8 @@ data class ProviderHit(
     val isrc: String?,
     val coverUrl: String?,
     val quality: String,
+    /** Shown name of the source ("YouTube" when a YouTube Music search fell back to regular YouTube). */
+    val label: String = provider.label,
 )
 
 /** A song as shown in the results: the same recording found on one or more platforms. */

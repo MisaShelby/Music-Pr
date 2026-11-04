@@ -45,8 +45,9 @@ class YouTubeMusicProvider(private val newPipe: NewPipeSource = NewPipeSource())
     override val provider = Provider.YOUTUBE_MUSIC
 
     override suspend fun search(query: String, limit: Int): List<ProviderHit> =
-        newPipe.searchMusicSongs(query, limit).map {
-            ProviderHit(provider, it.url, it.title, it.artist, null, it.durationSec, null, null, "")
+        newPipe.searchYoutube(query, limit).map {
+            val label = if (it.kind == fr.offlinetune.core.model.Platform.YOUTUBE_MUSIC) "YouTube Music" else "YouTube"
+            ProviderHit(provider, it.url, it.title, it.artist, null, it.durationSec, null, it.thumbUrl, "", label)
         }
 }
 

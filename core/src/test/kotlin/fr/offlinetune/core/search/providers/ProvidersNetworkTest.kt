@@ -22,6 +22,9 @@ class ProvidersNetworkTest {
         val hits = YouTubeMusicProvider().search(q)
         assertTrue(hits.isNotEmpty())
         assertTrue(hits.all { it.provider == Provider.YOUTUBE_MUSIC && "watch?v=" in it.url })
+        assertTrue(hits.all { it.coverUrl != null }, "thumbnails")
+        // Where YouTube Music has no results (user's country) hits come from YouTube and say so.
+        assertTrue(hits.all { it.label == "YouTube Music" || it.label == "YouTube" })
     }
 
     @Test fun soundcloud() = runBlocking {
