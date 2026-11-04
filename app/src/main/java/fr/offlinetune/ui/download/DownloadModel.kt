@@ -84,6 +84,7 @@ class DownloadModel(
     private val _forYou = MutableStateFlow<ForYouState>(ForYouState.Loading)
     val forYou: StateFlow<ForYouState> = _forYou.asStateFlow()
     private var forYouKey: List<String>? = null
+    private var forYouJob: Job? = null
 
     /** Suggestions from the library's most present artists (+ the user's Spotify playlists when logged in). */
     fun loadForYou(tracks: List<LibTrack>, force: Boolean = false) {
@@ -94,7 +95,8 @@ class DownloadModel(
         if (!force && key == forYouKey && _forYou.value is ForYouState.Ready) return
         forYouKey = key
         _forYou.value = ForYouState.Loading
-        scope.launch {
+        forYouJob?.cancel() // an older load must not overwrite a newer one
+        forYouJob = scope.launch {
             keys = settings.current()
             val owned = tracks.map { Recommendations.key(it.artist, it.title) }.toSet()
             val rows = runCatching { recommendations.forYou(top, owned) }.getOrDefault(emptyList())

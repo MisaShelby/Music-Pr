@@ -28,6 +28,8 @@ object SpotifyLogin {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } catch (e: OfflineTuneException) {
                 Toast.makeText(context, e.userMessage(), Toast.LENGTH_LONG).show()
+            } catch (e: android.content.ActivityNotFoundException) {
+                Toast.makeText(context, "Aucun navigateur pour se connecter à Spotify", Toast.LENGTH_LONG).show()
             }
         }
     }

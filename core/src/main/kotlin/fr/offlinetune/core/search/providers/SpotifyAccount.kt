@@ -98,7 +98,12 @@ class SpotifyAccount(
         val refresh = t.refresh ?: throw NeedsKey("Spotify (connexion au compte)")
         val id = clientId() ?: throw NeedsKey("Spotify")
         val form = FormBody.Builder().add("grant_type", "refresh_token").add("refresh_token", refresh).add("client_id", id).build()
-        store(token(form), refresh).access
+        val json = try { token(form) } catch (e: BadKey) {
+            // Refresh token revoked or expired (invalid_grant): forget it so the user can reconnect.
+            save(null)
+            throw NeedsKey("Spotify (reconnectez-vous dans Réglages)")
+        }
+        store(json, refresh).access
     }
 
     private suspend fun getJson(url: String): JsonElement? = withContext(Dispatchers.IO) {

@@ -112,6 +112,9 @@ class PlayerConnection(private val context: Context) {
     fun playNext(tracks: List<PlayableTrack>) = withController { c ->
         if (tracks.isEmpty()) return@withController
         if (c.mediaItemCount == 0) { playList(tracks, 0); return@withController }
+        // In shuffle mode new items land at a random place of the shuffle order: turn shuffle off so
+        // « Lire après » really plays next (the rest of the queue keeps its list order).
+        if (c.shuffleModeEnabled) c.shuffleModeEnabled = false
         c.addMediaItems(c.currentMediaItemIndex + 1, tracks.map { it.toMediaItem() })
     }
 
