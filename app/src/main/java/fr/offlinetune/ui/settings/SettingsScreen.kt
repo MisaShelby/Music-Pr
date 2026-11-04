@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,14 +101,39 @@ fun SettingsScreen(padding: PaddingValues) {
         Group("Téléchargement")
         Toggle("Paroles automatiques", "Cherche les paroles sur LRCLIB pour chaque fiche.", s.autoLyrics) { v -> update { it.copy(autoLyrics = v) } }
 
+        Group("Plateformes")
+        Text(
+            "YouTube Music, SoundCloud, Deezer et Apple Music fonctionnent sans rien faire. Pour chercher aussi dans " +
+                "Spotify et Tidal, créez une clé développeur gratuite (developer.spotify.com, developer.tidal.com) " +
+                "et collez-la ici. Elle ne sert qu'à la recherche et aux infos.",
+            style = MaterialTheme.typography.bodyMedium, color = Ink.Muted,
+        )
+        KeyField("Spotify — Client ID", s.spotifyId, secret = false) { v -> update { it.copy(spotifyId = v) } }
+        KeyField("Spotify — Client Secret", s.spotifySecret, secret = true) { v -> update { it.copy(spotifySecret = v) } }
+        KeyField("Tidal — Client ID", s.tidalId, secret = false) { v -> update { it.copy(tidalId = v) } }
+        KeyField("Tidal — Client Secret", s.tidalSecret, secret = true) { v -> update { it.copy(tidalSecret = v) } }
+
         Group("À propos")
-        Text("OfflineTune ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+        Text("Musique Pr ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
         Text(
             "Logiciel libre sous licence GPL-3.0. Sans publicité ni traqueur. Extraction : NewPipeExtractor. Paroles : LRCLIB.",
             style = MaterialTheme.typography.bodyMedium, color = Ink.Muted,
         )
         Spacer(Modifier.height(32.dp))
     }
+}
+
+@Composable
+private fun KeyField(label: String, value: String?, secret: Boolean, onChange: (String?) -> Unit) {
+    var text by androidx.compose.runtime.saveable.rememberSaveable(value == null) { androidx.compose.runtime.mutableStateOf(value ?: "") }
+    androidx.compose.material3.OutlinedTextField(
+        value = text,
+        onValueChange = { text = it; onChange(it.trim().ifEmpty { null }) },
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    )
 }
 
 @Composable

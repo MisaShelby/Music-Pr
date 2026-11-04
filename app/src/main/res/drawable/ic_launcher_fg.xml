@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- White double eighth note, centred in the 66 dp safe zone of the adaptive icon. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFF6B3D" android:pathData="M46,34 L70,30 L70,66 A8,8 0 1,1 66,59 L66,40 L50,42.5 L50,72 A8,8 0 1,1 46,65 Z" />
+    <group android:translateX="26" android:translateY="26" android:scaleX="0.875" android:scaleY="0.875">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M24,14l26,-6v34a7,7 0,1 1,-4,-6.3V18.5L28,22.7V46a7,7 0,1 1,-4,-6.3z" />
+    </group>
 </vector>

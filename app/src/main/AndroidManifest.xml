@@ -9,7 +9,7 @@
 
     <application
         android:name=".App"
-        android:label="OfflineTune"
+        android:label="Musique Pr"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.OfflineTune">
         <activity

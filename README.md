@@ -1,4 +1,6 @@
-# OfflineTune
+# Musique Pr
+
+(anciennement OfflineTune)
 
 Lecteur et téléchargeur de musique hors ligne pour Android, sans publicité ni traqueur.
 

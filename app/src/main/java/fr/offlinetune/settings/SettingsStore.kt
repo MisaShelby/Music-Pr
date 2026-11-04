@@ -24,7 +24,16 @@ data class AppSettings(
     val dsp: DspSettings = DspSettings(),
     val userPresets: Map<String, List<Float>> = emptyMap(),
     val currentPresetName: String = "Plat",
+    /** The user's own developer keys for the official Spotify / Tidal APIs (search and info only). */
+    val spotifyId: String? = null,
+    val spotifySecret: String? = null,
+    val tidalId: String? = null,
+    val tidalSecret: String? = null,
 ) {
+    val spotifyKeys get() = keyPair(spotifyId, spotifySecret)
+    val tidalKeys get() = keyPair(tidalId, tidalSecret)
+    private fun keyPair(a: String?, b: String?) = if (!a.isNullOrBlank() && !b.isNullOrBlank()) a.trim() to b.trim() else null
+
     /** Spec §10: the download folder defaults to the library folder. */
     val effectiveDownloadTree get() = downloadTreeUri ?: libraryTreeUri
 }
