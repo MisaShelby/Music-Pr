@@ -44,9 +44,10 @@ fun Knob(
     default: Float = 0f,
     size: Dp = 92.dp,
     step: Float = 0.5f,
+    color: Color? = null,
     onChange: (Float) -> Unit,
 ) {
-    val accent = MaterialTheme.colorScheme.primary
+    val accent = color ?: MaterialTheme.colorScheme.primary
     val current by rememberUpdatedState(value)
     var acc by remember { mutableFloatStateOf(0f) }
     val span = range.endInclusive - range.start
