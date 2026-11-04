@@ -1,0 +1,20 @@
+# Musique Pr v2.1 — « Pour vous », copier le lien, import des playlists Spotify
+
+> Executed inline (superpowers:executing-plans), TDD on `:core`, build + device check on `:app`.
+
+**Spec (decided with the user, 2026-11-04):**
+- The Télécharger tab shows **« Pour vous »** before any typing: suggestions **based on the user's library** — popular tracks of their most present artists that they don't have yet, those artists' recent albums, similar artists' top tracks. Rows of covers, horizontally scrollable. Song → sources screen (v2); album → its tracks.
+- **« Copier le lien »** button on each song (results, suggestions) and on each source row.
+- **Spotify playlist import**: the user logs into Spotify (official Authorization Code + PKCE, Redirect URI `fr.offlinetune://spotify-callback`, scopes `playlist-read-private playlist-read-collaborative`, the user's own Client ID). Their playlists are **only displayed**; touching a track opens its sources to download it individually. No automatic download.
+- Constraints of v2 unchanged (only YouTube/SoundCloud audio downloaded; official APIs only; French UI).
+
+**Builder's calls:** suggestions from the public Deezer API (`/search/artist`, `/artist/{id}/top`, `/artist/{id}/albums`, `/artist/{id}/related`, `/album/{id}/tracks`); top 5 artists by track count (excluding « Artiste inconnu »); tracks already in the library filtered out by normalized title+artist; Spotify tokens stored in settings (refresh token used when expired); playlist tracks via `/v1/playlists/{id}/tracks`, falling back to `/items` on 404/410.
+
+## Tasks
+
+1. **core `search/Recommendations.kt`** — `data class AlbumCard(id, title, artist, coverUrl, year)`, `sealed RecRow { Tracks(title, hits: List<ProviderHit>); Albums(title, albums: List<AlbumCard>) }`, `class Recommendations(base = "https://api.deezer.com") { suspend fun forYou(topArtists: List<String>, owned: Set<String> /* normalized "artist|title" */): List<RecRow>; suspend fun albumTracks(id): List<ProviderHit> }`. Test: MockWebServer fixtures (artist search → top → albums → related): rows titled « Populaire chez Daft Punk », « Albums de Daft Punk », « Si vous aimez Daft Punk »; owned track excluded; one artist failing doesn't drop the others. Network test: Daft Punk gives ≥ 1 row.
+2. **core `search/providers/SpotifyAccount.kt`** — `object Pkce { fun verifier(random): String; fun challenge(verifier): String }` (RFC 7636 appendix B vector); `data class SpotifyTokens(access, refresh, expiresAt)`; `class SpotifyAccount(clientId: () -> String?, tokens: get/set, accounts, api) { fun authorizeUrl(verifier, state): String; suspend fun exchange(code, verifier): SpotifyTokens; suspend fun playlists(): List<SpotifyPlaylist(id, name, trackCount, coverUrl)>; suspend fun tracks(playlistId): List<ProviderHit> }` (paging via `next`, refresh on expiry or 401, `/items` fallback). Tests: PKCE vector; MockWebServer exchange (form fields), playlists paging (2 pages), tracks parsing (`track` and `item` keys, local/null tracks skipped), refresh on 401.
+3. **app — Spotify login** — manifest intent-filter (scheme `fr.offlinetune`, host `spotify-callback`) on MainActivity; settings fields `spotifyAccess/Refresh/ExpiresAt`, pending verifier/state; Réglages › Plateformes: « Se connecter à Spotify » / « Déconnecter » (needs Client ID); callback → exchange → toast.
+4. **app — Télécharger « Pour vous »** — `DlPhase.Home` (suggestions loading/ready), `DlPhase.SongList(title, songs, back)` used for album tracks and Spotify playlist tracks; `Sources.back: DlPhase`; Home rows: « Vos playlists Spotify » (if logged in), recommendation rows; song card → sources; album card → SongList; playlist card → SongList. Library top artists computed from `library.tracks`.
+5. **app — Copier le lien** — icon button on song rows/cards and on source rows; copies the url (active filter's hit, else Spotify > Deezer > Apple > YouTube > SoundCloud), toast « Lien copié ».
+6. **Delivery** — full tests, APK, install, device check (ask before driving the phone), README section, final review.
