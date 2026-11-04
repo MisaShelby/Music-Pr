@@ -156,7 +156,7 @@ fun TrackInfoScreen(app: App, t: LibTrack, onClose: () -> Unit) {
                         year.toIntOrNull(), track.toIntOrNull(), genre.ifBlank { null },
                     )
                     val msg = try {
-                        files.save(t, info, newCover, if (lyricsChanged) lyrics?.ifBlank { null } else null)
+                        files.save(t, info, newCover, if (lyricsChanged) (lyrics ?: "").trim() else null) // "" = remove the lyrics
                         "Infos enregistrées"
                     } catch (e: Throwable) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
