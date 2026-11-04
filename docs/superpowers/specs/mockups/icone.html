@@ -1,0 +1,40 @@
+<h2>Icône de l'application</h2>
+<p class="subtitle">Dans l'esprit de ce que vous aimez (carré arrondi, dégradé vif, note de musique), mais avec un dessin original pour ne pas copier l'icône d'Apple. Touchez celle que vous préférez.</p>
+
+<style>
+  .ic{width:120px;height:120px;border-radius:28px;margin:18px auto 8px;display:flex;align-items:center;justify-content:center;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+  .lbl{text-align:center;font-family:system-ui,Roboto,sans-serif;font-size:13px;color:#ddd;margin-bottom:14px}
+  .home{background:linear-gradient(160deg,#20253a,#0d0f18);border-radius:18px;padding:6px 0}
+</style>
+
+<div class="cards">
+  <div class="card" data-choice="corail" onclick="toggleSelect(this)">
+    <div class="card-image home">
+      <div class="ic" style="background:linear-gradient(160deg,#ff6a88 0%,#ff2d55 45%,#c2185b 100%)">
+        <svg width="64" height="64" viewBox="0 0 64 64"><path d="M24 14l26-6v34a7 7 0 1 1-4-6.3V18.5L28 22.7V46a7 7 0 1 1-4-6.3z" fill="#fff"/></svg>
+      </div>
+      <div class="lbl">Musique Pr</div>
+    </div>
+    <div class="card-body"><h3>Corail</h3><p>Dégradé rose-rouge, double croche blanche. Le plus proche de l'esprit demandé.</p></div>
+  </div>
+
+  <div class="card" data-choice="aurore" onclick="toggleSelect(this)">
+    <div class="card-image home">
+      <div class="ic" style="background:linear-gradient(150deg,#ff9a3d 0%,#ff3d7f 50%,#7b4dff 100%)">
+        <svg width="70" height="70" viewBox="0 0 70 70"><circle cx="35" cy="35" r="22" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="3"/><path d="M30 18l18-4v28a6 6 0 1 1-3.5-5.5V21.5L33.5 24v22a6 6 0 1 1-3.5-5.5z" fill="#fff"/></svg>
+      </div>
+      <div class="lbl">Musique Pr</div>
+    </div>
+    <div class="card-body"><h3>Aurore</h3><p>Dégradé orange → rose → violet, note posée sur un disque en verre.</p></div>
+  </div>
+
+  <div class="card" data-choice="verre" onclick="toggleSelect(this)">
+    <div class="card-image home">
+      <div class="ic" style="background:linear-gradient(160deg,#3a7bff 0%,#7b4dff 55%,#ff3d7f 100%)">
+        <svg width="70" height="70" viewBox="0 0 70 70"><rect x="12" y="12" width="46" height="46" rx="14" fill="rgba(255,255,255,.22)" stroke="rgba(255,255,255,.5)"/><path d="M29 22l16-3.5v24a5.5 5.5 0 1 1-3-4.9V25L32 27.4v18.6a5.5 5.5 0 1 1-3-4.9z" fill="#fff"/></svg>
+      </div>
+      <div class="lbl">Musique Pr</div>
+    </div>
+    <div class="card-body"><h3>Verre bleu-violet</h3><p>Dégradé froid avec un carreau de verre au centre, comme l'interface.</p></div>
+  </div>
+</div>

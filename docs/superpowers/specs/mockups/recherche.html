@@ -1,0 +1,58 @@
+<h2>Recherche multi-sources : est-ce bien ça ?</h2>
+<p class="subtitle">À gauche : les résultats avec les filtres de source. À droite : ce qui s'ouvre quand on touche une chanson (sans filtre), puis la qualité par source.</p>
+
+<style>
+  .ph{width:300px;height:620px;border-radius:38px;overflow:hidden;position:relative;margin:0 auto;font-family:system-ui,-apple-system,Roboto,sans-serif;color:#fff;background:#12121a;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+  .glass{background:rgba(255,255,255,.10);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid rgba(255,255,255,.16)}
+  .in{padding:20px 16px;display:flex;flex-direction:column;gap:12px;height:100%;box-sizing:border-box}
+  .h{font-size:26px;font-weight:800;letter-spacing:-.02em}
+  .search{border-radius:14px;padding:10px 12px;font-size:13px;opacity:.9}
+  .chips{display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden}
+  .chip{font-size:11px;padding:6px 10px;border-radius:999px;white-space:nowrap}
+  .on{background:#fff;color:#12121a;font-weight:700}
+  .r{display:flex;gap:10px;align-items:center}
+  .art{width:46px;height:46px;border-radius:10px;flex:none}
+  .tt{font-size:14px;font-weight:600}
+  .ss{font-size:11px;opacity:.65}
+  .dots{display:flex;gap:3px;margin-top:4px}
+  .d{width:16px;height:16px;border-radius:5px;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff}
+  .src{border-radius:16px;padding:10px 12px;display:flex;gap:10px;align-items:center}
+  .badge{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:none}
+  .q{font-size:11px;opacity:.8}
+  .dl{margin-left:auto;font-size:11px;padding:6px 10px;border-radius:999px;background:#fff;color:#12121a;font-weight:700}
+  .ext{margin-left:auto;font-size:11px;opacity:.6}
+</style>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Résultats « daft punk one more time »</div>
+    <div class="mockup-body" style="background:#0e0e12;padding:16px">
+      <div class="ph"><div class="in">
+        <div class="h">Télécharger</div>
+        <div class="search glass">🔍 daft punk one more time</div>
+        <div class="chips"><span class="chip on">Tout</span><span class="chip glass">YouTube Music</span><span class="chip glass">SoundCloud</span><span class="chip glass">Deezer</span><span class="chip glass">Apple Music</span><span class="chip glass">Spotify</span></div>
+        <div class="r"><div class="art" style="background:linear-gradient(135deg,#ff5e7e,#7b5cff)"></div><div><div class="tt">One More Time</div><div class="ss">Daft Punk · Discovery · 5:20</div><div class="dots"><span class="d" style="background:#e33">Y</span><span class="d" style="background:#f60">S</span><span class="d" style="background:#a238ff">D</span><span class="d" style="background:#fa2d48">A</span><span class="d" style="background:#1db954">S</span><span class="d" style="background:#222;border:1px solid #555">T</span><span class="d" style="background:#0070ef">Q</span></div></div></div>
+        <div class="r"><div class="art" style="background:linear-gradient(135deg,#ffb547,#ff5e7e)"></div><div><div class="tt">One More Time (Live 2007)</div><div class="ss">Daft Punk · Alive 2007 · 6:42</div><div class="dots"><span class="d" style="background:#e33">Y</span><span class="d" style="background:#a238ff">D</span><span class="d" style="background:#1db954">S</span></div></div></div>
+        <div class="r"><div class="art" style="background:linear-gradient(135deg,#46d,#2bd)"></div><div><div class="tt">One More Time (remix)</div><div class="ss">DJ Alpha · 3:58</div><div class="dots"><span class="d" style="background:#f60">S</span></div></div></div>
+        <div class="ss" style="margin-top:auto;text-align:center">Les pastilles = plateformes où la chanson existe</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Après avoir touché « One More Time »</div>
+    <div class="mockup-body" style="background:#0e0e12;padding:16px">
+      <div class="ph" style="background:radial-gradient(circle at 30% 10%,#5a2e66,#12121a 60%)"><div class="in">
+        <div class="r"><div class="art" style="width:56px;height:56px;background:linear-gradient(135deg,#ff5e7e,#7b5cff)"></div><div><div class="tt" style="font-size:16px">One More Time</div><div class="ss">Daft Punk · Discovery</div></div></div>
+        <div style="font-size:13px;font-weight:700;margin-top:4px">Téléchargeable</div>
+        <div class="src glass"><div class="badge" style="background:#e33">YT</div><div><div class="tt" style="font-size:13px">YouTube Music</div><div class="q">Opus · 160 kb/s · paroles ✓</div></div><span class="dl">Choisir</span></div>
+        <div class="src glass"><div class="badge" style="background:#f60">SC</div><div><div class="tt" style="font-size:13px">SoundCloud</div><div class="q">AAC · 160 kb/s · paroles ✓</div></div><span class="dl">Choisir</span></div>
+        <div style="font-size:13px;font-weight:700;margin-top:6px;opacity:.8">Disponible aussi (écoute dans leur appli)</div>
+        <div class="src glass" style="opacity:.75"><div class="badge" style="background:#0070ef">Q</div><div><div class="tt" style="font-size:13px">Qobuz</div><div class="q">FLAC 24 bit / 44,1 kHz</div></div><span class="ext">Ouvrir ↗</span></div>
+        <div class="src glass" style="opacity:.75"><div class="badge" style="background:#222;border:1px solid #555">T</div><div><div class="tt" style="font-size:13px">Tidal</div><div class="q">FLAC 16 bit / 44,1 kHz</div></div><span class="ext">Ouvrir ↗</span></div>
+        <div class="src glass" style="opacity:.75"><div class="badge" style="background:#fa2d48">A</div><div><div class="tt" style="font-size:13px">Apple Music</div><div class="q">ALAC sans perte</div></div><span class="ext">Ouvrir ↗</span></div>
+        <div class="ss" style="text-align:center">+ Deezer, Spotify, Amazon Music</div>
+      </div></div>
+    </div>
+  </div>
+</div>
