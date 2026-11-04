@@ -17,3 +17,29 @@ class DeezerQuotaTest {
         }
     }
 }
+
+class DeezerFindBestTest {
+    @org.junit.jupiter.api.Test fun `findBest prefers the artist's own album over a compilation`() = kotlinx.coroutines.runBlocking {
+        MockWebServer().use { s ->
+            s.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                    val p = request.path!!
+                    val body = when {
+                        p.startsWith("/search/track") -> """{"data":[
+                            {"id":1,"title":"Song","artist":{"name":"Band"},"duration":200,"album":{"id":10}},
+                            {"id":2,"title":"Song","artist":{"name":"Band"},"duration":200,"album":{"id":20}}]}"""
+                        p == "/track/1" -> """{"id":1,"title":"Song","artist":{"name":"Band"},"duration":200,"release_date":"2015-01-01","album":{"id":10,"title":"Hits Compilation"}}"""
+                        p == "/track/2" -> """{"id":2,"title":"Song","artist":{"name":"Band"},"duration":200,"release_date":"1990-01-01","album":{"id":20,"title":"First Album"}}"""
+                        p == "/album/10" -> """{"artist":{"name":"Various Artists"}}"""
+                        p == "/album/20" -> """{"artist":{"name":"Band"}}"""
+                        else -> """{"error":{"type":"DataException","code":800}}"""
+                    }
+                    return MockResponse().setBody(body)
+                }
+            }
+            val t = DeezerClient(base = s.url("").toString().trimEnd('/')).findBest("Song", "Band", 200)
+            assertEquals("First Album", t!!.album)
+            assertEquals("Band", t.albumArtist)
+        }
+    }
+}

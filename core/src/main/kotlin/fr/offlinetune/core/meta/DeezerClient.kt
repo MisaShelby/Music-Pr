@@ -63,9 +63,17 @@ class DeezerClient(
         val hits = get("/search/track?limit=10&q=${enc(strict)}").arr("data").map { it.toHit() }
             .ifEmpty { search("$artist $title", 10) }
         val ref = TrackInfo(title, artist, durationSec = durationSec)
-        val best = Matcher.rank(ref, hits.map { SourceCandidate(it.url, it.title, it.artist, it.durationSec) })
-            .firstOrNull { it.rejectedReason == null && it.score >= SAFE_SCORE } ?: return null
-        return track(best.url.substringAfterLast('/'))
+        val accepted = Matcher.rank(ref, hits.map { SourceCandidate(it.url, it.title, it.artist, it.durationSec) })
+            .filter { it.rejectedReason == null && it.score >= SAFE_SCORE }
+        val bestScore = accepted.firstOrNull()?.score ?: return null
+        // Same song often exists on compilations: among near-equal matches prefer the artist's own album, then the oldest.
+        val details = accepted.filter { it.score >= bestScore - 0.05 }.take(4)
+            .mapNotNull { runCatching { track(it.url.substringAfterLast('/')) }.getOrNull() }
+        val wanted = Matcher.normalize(Matcher.firstArtistOf(artist))
+        return details.sortedWith(
+            compareBy<TrackInfo> { Matcher.normalize(it.albumArtist ?: "") != wanted }
+                .thenBy { it.year ?: Int.MAX_VALUE },
+        ).firstOrNull()
     }
 
     private fun JsonElement.toHit() = SearchHit(
