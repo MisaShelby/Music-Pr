@@ -3,6 +3,11 @@ package fr.offlinetune.ui.download
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -102,30 +107,46 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
     LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Text("Télécharger", style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 12.dp))
-            OutlinedTextField(
-                value = input, onValueChange = { model.input.value = it },
-                placeholder = { Text("Coller un lien ou rechercher") },
-                singleLine = true, shape = RoundedCornerShape(14.dp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); model.submit() }),
-                trailingIcon = {
-                    if (input.isNotEmpty()) IconButton(onClick = { model.reset() }) { Icon(Icons.Rounded.Close, "Effacer") }
-                },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            )
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Glass search field.
+            fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), RoundedCornerShape(20.dp), strong = true) {
+                androidx.compose.material3.TextField(
+                    value = input, onValueChange = { model.input.value = it },
+                    placeholder = { Text("Lien ou « artiste titre »", color = Ink.Muted) },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null, tint = Ink.Muted) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); model.submit() }),
+                    trailingIcon = { if (input.isNotEmpty()) IconButton(onClick = { model.reset() }) { Icon(Icons.Rounded.Close, "Effacer") } },
+                    colors = androidx.compose.material3.TextFieldDefaults.colors(
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 val chip = remember(input) { detect(input) }
-                if (chip != null) AssistChip(onClick = {}, label = { Text(chip, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                if (chip != null) fr.offlinetune.ui.glass.GlassChip(chip, selected = false) {}
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = {
-                    val clip = (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
-                    val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
-                    if (!text.isNullOrBlank()) model.submit(text)
-                }) {
-                    Icon(Icons.Rounded.ContentPaste, null); Spacer(Modifier.width(6.dp)); Text("Coller")
+                fr.offlinetune.ui.glass.GlassSurface(shape = RoundedCornerShape(50)) {
+                    Row(
+                        Modifier.clickable {
+                            val clip = (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
+                            val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+                            if (!text.isNullOrBlank()) { keyboard?.hide(); model.submit(text) }
+                        }.padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Coller", style = MaterialTheme.typography.labelMedium) }
                 }
-                Spacer(Modifier.width(4.dp))
-                FilledTonalButton(onClick = { keyboard?.hide(); model.submit() }, enabled = input.isNotBlank()) { Text("Valider") }
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.foundation.layout.Box(
+                    Modifier.clip(RoundedCornerShape(50))
+                        .background(if (input.isNotBlank()) androidx.compose.ui.graphics.Color.White else Ink.SurfaceHigh)
+                        .clickable(enabled = input.isNotBlank()) { keyboard?.hide(); model.submit() }
+                        .padding(horizontal = 18.dp, vertical = 9.dp),
+                ) { Text("Rechercher", color = if (input.isNotBlank()) Ink.Background else Ink.Muted, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
             }
         }
 
@@ -161,26 +182,32 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
 
 @Composable
 private fun DownloadRow(item: DownloadItem, onRetry: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(item.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            when (item.state) {
-                is DlState.Done -> Icon(Icons.Rounded.CheckCircle, "Terminé", tint = MaterialTheme.colorScheme.primary)
-                is DlState.Failed -> Icon(Icons.Rounded.ErrorOutline, "Échec", tint = MaterialTheme.colorScheme.error)
-                else -> {}
+    fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), RoundedCornerShape(18.dp)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(item.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                when (val st = item.state) {
+                    is DlState.Done -> Icon(Icons.Rounded.CheckCircle, "Terminé", tint = MaterialTheme.colorScheme.primary)
+                    is DlState.Failed -> Icon(Icons.Rounded.ErrorOutline, "Échec", tint = MaterialTheme.colorScheme.error)
+                    is DlState.Running -> Text("${(st.progress * 100).toInt()} %", style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+                    else -> {}
+                }
             }
-        }
-        Spacer(Modifier.height(6.dp))
-        when (val s = item.state) {
-            DlState.Queued -> Text("En attente", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
-            is DlState.Running -> LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth())
-            is DlState.Done -> Column {
-                Text("Enregistré dans « ${s.folderName} »", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
-                s.note?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-            }
-            is DlState.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = onRetry) { Text("Réessayer") }
+            Spacer(Modifier.height(8.dp))
+            when (val s = item.state) {
+                DlState.Queued -> Text("En attente", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
+                is DlState.Running -> LinearProgressIndicator(
+                    progress = { s.progress }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    trackColor = fr.offlinetune.ui.glass.Glass.Fill,
+                )
+                is DlState.Done -> Column {
+                    Text("Enregistré dans « ${s.folderName} »", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
+                    s.note?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+                }
+                is DlState.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onRetry) { Text("Réessayer") }
+                }
             }
         }
     }
