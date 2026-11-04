@@ -17,6 +17,9 @@ import fr.offlinetune.core.model.SourceCandidate
 import fr.offlinetune.core.model.TrackInfo
 import fr.offlinetune.core.model.Unsupported
 import fr.offlinetune.core.net.Http
+import fr.offlinetune.core.search.DownloadOption
+import fr.offlinetune.core.search.Provider
+import fr.offlinetune.core.search.SongResult
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -73,6 +76,24 @@ class SheetService(
 
     /** "Rechercher à nouveau" with the (possibly edited) title / artist. */
     suspend fun refreshLyrics(sheet: Sheet, info: TrackInfo): Sheet = sheet.copy(lyrics = findLyrics(info))
+
+    /**
+     * v2 multi-source search: the user picked [option] for [song]. Info comes from the best catalogue
+     * (full Deezer track when available), audio from the chosen downloadable source. Same sheet as v1.
+     */
+    suspend fun fromSong(song: SongResult, option: DownloadOption): Sheet = coroutineScope {
+        val dz = song.hits[Provider.DEEZER]?.let { h -> runCatching { deezer.track(h.url.substringAfterLast('/')) }.getOrNull() }
+        val info = dz ?: TrackInfo(
+            title = song.title, artist = song.artist, album = song.album,
+            durationSec = song.durationSec ?: option.durationSec, coverUrl = song.coverUrl,
+            isrc = song.hits.values.firstNotNullOfOrNull { it.isrc },
+        )
+        val lyr = async { findLyrics(info) }
+        val cover = async { downloadCover(info.coverUrl ?: song.coverUrl) }
+        val source = SourceCandidate(option.url, option.title, option.artist, option.durationSec, 1.0)
+        val origin = when (option.provider) { Provider.SOUNDCLOUD -> Platform.SOUNDCLOUD; else -> Platform.YOUTUBE_MUSIC }
+        Sheet(info, origin, source, listOf(source), option.format, emptyList(), lyr.await(), cover.await())
+    }
 
     // --- builders ---------------------------------------------------------
 
