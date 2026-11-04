@@ -57,10 +57,11 @@ class SpotifyAccountTest {
                     request.path!!.startsWith("/v1/me/playlists?") && "offset=50" !in request.path!! -> MockResponse().setBody(
                         """{"items":[{"id":"p1","name":"Soirée","images":[{"url":"img"}],"tracks":{"total":2}}],"next":"$base/v1/me/playlists?offset=50&limit=50"}""")
                     request.path!!.startsWith("/v1/me/playlists") -> MockResponse().setBody("""{"items":[{"id":"p2","name":"Calme","images":[],"items":{"total":0}}],"next":null}""")
-                    request.path!!.startsWith("/v1/playlists/p1/tracks") -> MockResponse().setBody("""{"items":[
-                        {"track":{"name":"One More Time","duration_ms":320000,"artists":[{"name":"Daft Punk"}],"album":{"name":"Discovery","images":[{"url":"big","width":640}]},
+                    request.path!!.startsWith("/v1/playlists/p1/items") -> MockResponse().setBody("""{"items":[
+                        {"item":{"name":"One More Time","duration_ms":320000,"artists":[{"name":"Daft Punk"}],"album":{"name":"Discovery","images":[{"url":"big","width":640}]},
                          "external_ids":{"isrc":"GBDUW0000053"},"external_urls":{"spotify":"https://open.spotify.com/track/x"}}},
-                        {"track":null}],"next":null}""")
+                        {"item":null}],"next":null}""")
+                    request.path!!.startsWith("/v1/playlists/p1/tracks") -> MockResponse().setResponseCode(410)
                     else -> MockResponse().setResponseCode(404)
                 }
             }

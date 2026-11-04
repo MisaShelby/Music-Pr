@@ -26,14 +26,16 @@ class SpotifyProviderTest {
             s.enqueue(MockResponse().setBody("""{"access_token":"T1","token_type":"Bearer","expires_in":3600}"""))
             s.enqueue(MockResponse().setBody(searchBody))
             s.enqueue(MockResponse().setBody(searchBody))
+            s.enqueue(MockResponse().setBody(searchBody))
             val p = provider(s)
             val h = p.search("daft punk", 5).single()
+            p.search("daft punk", 15) // Spotify 2026: max 10 per request
             assertEquals(Provider.SPOTIFY, h.provider)
             assertEquals("One More Time", h.title); assertEquals("Daft Punk", h.artist); assertEquals("Discovery", h.album)
             assertEquals(320, h.durationSec); assertEquals("GBDUW0000053", h.isrc); assertEquals("big", h.coverUrl)
             assertEquals("https://open.spotify.com/track/abc", h.url)
             p.search("daft punk", 5)
-            assertEquals(3, s.requestCount)
+            assertEquals(4, s.requestCount)
             val tokenReq = s.takeRequest()
             assertEquals("/api/token", tokenReq.path)
             assertTrue(tokenReq.getHeader("Authorization")!!.startsWith("Basic "))
@@ -41,6 +43,9 @@ class SpotifyProviderTest {
             val searchReq = s.takeRequest()
             assertEquals("Bearer T1", searchReq.getHeader("Authorization"))
             assertTrue(searchReq.path!!.startsWith("/v1/search?") && "type=track" in searchReq.path!! && "market=FR" in searchReq.path!!)
+            assertTrue("limit=5" in searchReq.path!!, searchReq.path)
+            val second = s.takeRequest().path!!
+            assertTrue("limit=10" in second, second)
         }
     }
 

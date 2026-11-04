@@ -23,7 +23,8 @@ class SpotifyProvider(
     override suspend fun search(query: String, limit: Int): List<ProviderHit> {
         val token = auth.bearer()
         val q = URLEncoder.encode(query, "UTF-8")
-        val json = parseJson(Http.getText("$api/v1/search?type=track&market=FR&limit=$limit&q=$q", mapOf("Authorization" to "Bearer $token")))
+        // Spotify 2026: at most 10 results per search request.
+        val json = parseJson(Http.getText("$api/v1/search?type=track&market=FR&limit=${limit.coerceIn(1, 10)}&q=$q", mapOf("Authorization" to "Bearer $token")))
         return json.arr("tracks", "items").mapNotNull { t ->
             ProviderHit(
                 provider = provider,

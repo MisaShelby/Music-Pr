@@ -150,8 +150,9 @@ class SpotifyAccount(
 
     /** Tracks of one playlist (`/tracks`, or the newer `/items` when the former is gone). Local files and gaps skipped. */
     suspend fun tracks(playlistId: String): List<ProviderHit> {
-        val items = pagedOrNull("$api/v1/playlists/$playlistId/tracks?limit=100")
-            ?: pagedOrNull("$api/v1/playlists/$playlistId/items?limit=100") ?: emptyList()
+        // Spotify 2026: /items (only for playlists the user owns or collaborates on); /tracks kept as a fallback.
+        val items = pagedOrNull("$api/v1/playlists/$playlistId/items?limit=100")
+            ?: pagedOrNull("$api/v1/playlists/$playlistId/tracks?limit=100") ?: emptyList()
         return items.mapNotNull { it.at("track") ?: it.at("item") }.mapNotNull { t ->
             ProviderHit(
                 provider = Provider.SPOTIFY,
