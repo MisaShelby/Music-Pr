@@ -77,6 +77,16 @@ class StorageError(detail: String, cause: Throwable? = null) : OfflineTuneExcept
     override fun userMessage() = "Espace insuffisant ou dossier non accessible"
 }
 
+/** A platform that needs the user's own developer key (Spotify, Tidal) and none is set. */
+class NeedsKey(val platform: String) : OfflineTuneException("key needed: $platform") {
+    override fun userMessage() = "Clé $platform requise (Réglages › Plateformes)"
+}
+
+/** The platform refused the key the user entered. */
+class BadKey(val platform: String) : OfflineTuneException("key refused: $platform") {
+    override fun userMessage() = "Clé $platform refusée : vérifiez-la dans Réglages › Plateformes"
+}
+
 class Unsupported(val what: String) : OfflineTuneException("unsupported: $what") {
     override fun userMessage() = "Non pris en charge : $what"
 }
