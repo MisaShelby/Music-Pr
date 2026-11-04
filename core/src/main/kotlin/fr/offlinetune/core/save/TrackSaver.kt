@@ -25,6 +25,7 @@ import java.io.File
 class TrackSaver(
     private val resolve: suspend (url: String) -> ResolvedStream,
     private val download: suspend (ResolvedStream, File, (Float) -> Unit) -> Unit,
+    private val onFailure: (sourceUrl: String) -> Unit = {},
 ) {
     suspend fun save(sheet: Sheet, edited: TrackInfo, includeLyrics: Boolean, root: File, onProgress: (Float) -> Unit): File {
         val source = sheet.source ?: throw Unsupported("le téléchargement sans source audio choisie")
@@ -54,6 +55,7 @@ class TrackSaver(
             return File(final, audio.name)
         } catch (e: Throwable) {
             part.deleteRecursively()
+            onFailure(source.url)
             throw if (e is java.io.IOException) StorageError(e.message ?: "write failed", e) else e
         }
     }
@@ -83,7 +85,11 @@ class TrackSaver(
         private val FORBIDDEN = Regex("""[\\/:*?"<>|\p{Cntrl}]""")
 
         fun create(newPipe: NewPipeSource = NewPipeSource(), downloader: StreamDownloader = StreamDownloader()) =
-            TrackSaver(resolve = { newPipe.bestStream(it) }, download = { s, f, p -> downloader.download(s, f, p) })
+            TrackSaver(
+                resolve = { newPipe.bestStream(it) },
+                download = { s, f, p -> downloader.download(s, f, p) },
+                onFailure = { newPipe.invalidate(it) },
+            )
 
         fun sanitize(name: String): String {
             val s = FORBIDDEN.replace(name, "_").replace(Regex("""\s+"""), " ").trim(' ', '.')

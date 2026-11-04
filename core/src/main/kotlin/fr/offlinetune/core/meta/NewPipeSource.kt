@@ -11,6 +11,7 @@ import fr.offlinetune.core.model.SearchHit
 import fr.offlinetune.core.model.SourceCandidate
 import fr.offlinetune.core.model.TrackInfo
 import fr.offlinetune.core.model.Unsupported
+import fr.offlinetune.core.net.ExpiringCache
 import fr.offlinetune.core.net.NewPipeInit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -58,14 +59,14 @@ class NewPipeSource {
         }
     }
 
-    private val streamInfoCache = object : LinkedHashMap<String, StreamInfo>(8, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, StreamInfo>?) = size > 8
-    }
+    /** Stream URLs expire after ~6 h: keep extraction results 30 min at most. */
+    private val streamInfoCache = ExpiringCache<String, StreamInfo>(ttlMs = 30 * 60_000L, maxSize = 8)
 
     private fun streamInfo(url: String): StreamInfo =
-        synchronized(streamInfoCache) { streamInfoCache[url] } ?: StreamInfo.getInfo(url).also {
-            synchronized(streamInfoCache) { streamInfoCache[url] = it }
-        }
+        streamInfoCache[url] ?: StreamInfo.getInfo(url).also { streamInfoCache.put(url, it) }
+
+    /** Forget a cached extraction (called after a failed download so a retry re-extracts fresh URLs). */
+    fun invalidate(url: String) = streamInfoCache.invalidate(url)
 
     suspend fun info(url: String): Pair<TrackInfo, Platform> = extract(url) {
         val si = streamInfo(url)
