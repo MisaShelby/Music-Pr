@@ -28,7 +28,9 @@ import fr.offlinetune.settings.AppSettings
 class CrossfadeController(private val context: Context) {
     @Volatile var settings: AppSettings = AppSettings()
 
-    val main: ExoPlayer = buildPlayer(context, handleFocus = true)
+    @Volatile private var mainBassCut = 0f
+    @Volatile private var auxBassCut = 0f
+    val main: ExoPlayer = buildPlayer(context, handleFocus = true) { mainBassCut }
     private val handler = Handler(Looper.getMainLooper())
 
     private sealed interface Xf {
@@ -86,6 +88,17 @@ class CrossfadeController(private val context: Context) {
                 val (gIn, gOut) = Fades.crossfadeGains(t)
                 xfadeGain = gIn; auxOutGain = gOut
                 applyVolume()
+                djPlan?.let { dj ->
+                    // Bass swap over ~2 beats around the middle: incoming bass comes in as the outgoing bass goes out.
+                    val w = ((dj.beatMs ?: 500.0) * 2 / s.durationMs).toFloat().coerceIn(0.05f, 0.4f)
+                    val x = ((t - (0.5f - w / 2)) / w).coerceIn(0f, 1f)
+                    mainBassCut = BASS_CUT * (1 - x); auxBassCut = BASS_CUT * x
+                    // Ease the incoming tempo back to normal over the last quarter.
+                    if (dj.inSpeed != 1.0 && t > 0.75f) {
+                        val k = ((t - 0.75f) / 0.25f).coerceIn(0f, 1f)
+                        main.playbackParameters = androidx.media3.common.PlaybackParameters((userSpeed * (dj.inSpeed + (1 - dj.inSpeed) * k)).toFloat(), 1f)
+                    }
+                }
                 if (t >= 1f) cancelCrossfade()
             }
             is Xf.Preparing -> {
@@ -122,7 +135,7 @@ class CrossfadeController(private val context: Context) {
     /** Loads the outgoing item on a fresh aux player, paused, at main's position. */
     private fun prepare(next: Boolean, manual: Boolean) {
         val item = main.currentMediaItem ?: return
-        val a = buildPlayer(context, handleFocus = false)
+        val a = buildPlayer(context, handleFocus = false) { auxBassCut }
         val p = Xf.Preparing(a, next, manual)
         xf = p
         a.setMediaItem(item, main.currentPosition)
@@ -145,11 +158,13 @@ class CrossfadeController(private val context: Context) {
 
     // --- Mix automatique: analyse the end of the current track and the start of the next one ---
     private var planKey: String? = null
-    @Volatile private var plan: fr.offlinetune.core.playback.MixPlan? = null
+    @Volatile private var plan: fr.offlinetune.core.playback.DjPlan? = null
     private val analysis = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private var djPlan: fr.offlinetune.core.playback.DjPlan? = null
+    private var userSpeed = 1f
 
     /** Plan for (current, next), computed in the background once the current track's duration is known. */
-    private fun autoPlan(): fr.offlinetune.core.playback.MixPlan? {
+    private fun autoPlan(): fr.offlinetune.core.playback.DjPlan? {
         val cur = main.currentMediaItem ?: return null
         val nextIndex = main.nextMediaItemIndex.takeIf { it >= 0 } ?: return null
         val next = main.getMediaItemAt(nextIndex)
@@ -160,9 +175,14 @@ class CrossfadeController(private val context: Context) {
             val manual = settings.crossfadeSec.coerceAtLeast(2) * 1000L
             val tailStart = (dur - 40_000).coerceAtLeast(0)
             analysis.execute {
+                // Loudness (100 ms) for the outro/silences, fine envelope (10 ms) for the tempo and the beats.
                 val out = AudioAnalyzer.envelope(context, cur.mediaId, tailStart, dur) ?: FloatArray(0)
                 val inn = AudioAnalyzer.envelope(context, next.mediaId, 0, 15_000) ?: FloatArray(0)
-                val p = fr.offlinetune.core.playback.AutoMix.plan(out, tailStart, dur, inn, manual)
+                val outFine = AudioAnalyzer.envelope(context, cur.mediaId, tailStart, dur, 10)
+                val inFine = AudioAnalyzer.envelope(context, next.mediaId, 0, 20_000, 10)
+                val outBeats = outFine?.let { fr.offlinetune.core.playback.BeatAnalyzer.analyze(it) }?.let { it.copy(firstBeatMs = it.firstBeatMs + tailStart) }
+                val inBeats = inFine?.let { fr.offlinetune.core.playback.BeatAnalyzer.analyze(it) }
+                val p = fr.offlinetune.core.playback.DjMix.plan(outBeats, inBeats, out, tailStart, dur, inn, manual)
                 handler.post { if (planKey == key) plan = p }
             }
         }
@@ -185,8 +205,14 @@ class CrossfadeController(private val context: Context) {
         applyVolume()
         if (p.next) {
             // Mix automatique: the next track starts after its leading silence.
-            if (auto != null && auto.skipInMs > 0 && main.nextMediaItemIndex >= 0) main.seekTo(main.nextMediaItemIndex, auto.skipInMs)
-            else main.seekToNextMediaItem()
+            if (auto != null && main.nextMediaItemIndex >= 0) {
+                djPlan = auto
+                userSpeed = main.playbackParameters.speed
+                main.seekTo(main.nextMediaItemIndex, auto.inStartMs)
+                // Incoming track at the outgoing tempo during the transition (pitch kept).
+                if (auto.inSpeed != 1.0) main.playbackParameters = androidx.media3.common.PlaybackParameters((auto.inSpeed * userSpeed).toFloat(), 1f)
+                mainBassCut = BASS_CUT; auxBassCut = 0f
+            } else main.seekToNextMediaItem()
         } else main.seekToPreviousMediaItem()
     }
 
@@ -197,6 +223,9 @@ class CrossfadeController(private val context: Context) {
             Xf.Idle -> {}
         }
         xf = Xf.Idle
+        if (djPlan?.inSpeed?.let { it != 1.0 } == true) main.playbackParameters = androidx.media3.common.PlaybackParameters(userSpeed, 1f)
+        djPlan = null
+        mainBassCut = 0f; auxBassCut = 0f
         xfadeGain = 1f
         auxOutGain = 1f
         applyVolume()
@@ -246,11 +275,12 @@ class CrossfadeController(private val context: Context) {
 
     companion object {
         private const val PAUSE_FADE_MS = 250L
+        private const val BASS_CUT = -24f
 
-        fun buildPlayer(context: Context, handleFocus: Boolean): ExoPlayer {
+        fun buildPlayer(context: Context, handleFocus: Boolean, bassCut: () -> Float = { 0f }): ExoPlayer {
             val renderers = object : DefaultRenderersFactory(context) {
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
-                    DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(DspAudioProcessor())).build()
+                    DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(DspAudioProcessor(bassCut))).build()
             }
             return ExoPlayer.Builder(context, renderers)
                 .setAudioAttributes(

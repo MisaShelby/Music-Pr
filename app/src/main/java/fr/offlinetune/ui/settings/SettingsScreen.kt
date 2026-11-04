@@ -82,8 +82,8 @@ fun SettingsScreen(padding: PaddingValues) {
         ) { pickDownload.launch(null) }
 
         Group("Lecture")
-        Toggle("Fondu enchaîné", "Le morceau suivant commence pendant que le précédent s'efface.", s.crossfadeEnabled) { v -> update { it.copy(crossfadeEnabled = v) } }
-        if (s.crossfadeEnabled) {
+        if (!s.autoMix) Toggle("Fondu enchaîné", "Le morceau suivant commence pendant que le précédent s'efface.", s.crossfadeEnabled) { v -> update { it.copy(crossfadeEnabled = v) } }
+        if (s.crossfadeEnabled && !s.autoMix) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Durée", modifier = Modifier.weight(1f))
                 Text("${s.crossfadeSec} s", color = Ink.Muted)
@@ -97,8 +97,8 @@ fun SettingsScreen(padding: PaddingValues) {
             Text("Désactivé : les morceaux s'enchaînent sans blanc.", style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
         }
         Toggle(
-            "Mix automatique",
-            "Analyse la fin et le début des morceaux pour enchaîner au bon moment, avec une transition adaptée au son.",
+            "Mix auto DJ",
+            "Enchaîne comme un DJ : tempo détecté, temps alignés, morceau suivant calé sur le tempo, échange des basses. La durée est choisie automatiquement.",
             s.autoMix,
         ) { v -> update { it.copy(autoMix = v) } }
         Toggle("Fondu à la pause et à la reprise", "Le son baisse doucement au lieu de s'arrêter net.", s.pauseFade) { v -> update { it.copy(pauseFade = v) } }

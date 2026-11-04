@@ -16,15 +16,15 @@ import kotlin.math.sqrt
 object AudioAnalyzer {
     private val cache = LruCache<String, FloatArray>(24)
 
-    fun envelope(context: Context, uri: String, startMs: Long, endMs: Long): FloatArray? {
-        val key = "$uri@$startMs-$endMs"
+    fun envelope(context: Context, uri: String, startMs: Long, endMs: Long, windowMs: Long = AutoMix.WINDOW_MS): FloatArray? {
+        val key = "$uri@$startMs-$endMs/$windowMs"
         cache.get(key)?.let { return it }
-        val result = runCatching { decode(context, uri, startMs, endMs) }.getOrNull() ?: return null
+        val result = runCatching { decode(context, uri, startMs, endMs, windowMs) }.getOrNull() ?: return null
         cache.put(key, result)
         return result
     }
 
-    private fun decode(context: Context, uri: String, startMs: Long, endMs: Long): FloatArray? {
+    private fun decode(context: Context, uri: String, startMs: Long, endMs: Long, windowMs: Long): FloatArray? {
         val ex = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -39,12 +39,12 @@ object AudioAnalyzer {
             codec = MediaCodec.createDecoderByType(mime).apply { configure(format, null, null, 0); start() }
             ex.seekTo(startMs * 1000, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
 
-            val windows = ((endMs - startMs) / AutoMix.WINDOW_MS).toInt().coerceAtLeast(1)
+            val windows = ((endMs - startMs) / windowMs).toInt().coerceAtLeast(1)
             val sums = DoubleArray(windows); val counts = IntArray(windows)
             val info = MediaCodec.BufferInfo()
             var inputDone = false
             var done = false
-            val deadline = System.currentTimeMillis() + 8000
+            val deadline = System.currentTimeMillis() + 15000
             while (!done && System.currentTimeMillis() < deadline) {
                 if (!inputDone) {
                     val i = codec.dequeueInputBuffer(5000)
@@ -72,7 +72,7 @@ object AudioAnalyzer {
                             repeat(channels) { mono += if (isFloat) buf.getFloat().toDouble() else buf.getShort() / 32768.0 }
                             mono /= channels
                             val tMs = info.presentationTimeUs / 1000 + f * 1000L / rate
-                            val w = ((tMs - startMs) / AutoMix.WINDOW_MS).toInt()
+                            val w = ((tMs - startMs) / windowMs).toInt()
                             if (w in 0 until windows) { sums[w] += mono * mono; counts[w]++ }
                         }
                         codec.releaseOutputBuffer(o, false)

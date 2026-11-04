@@ -16,8 +16,11 @@ object DspState {
 
 /** Runs the app's own [DspChain] on decoded PCM (16-bit or float), inside ExoPlayer's audio sink. */
 @UnstableApi
-class DspAudioProcessor : BaseAudioProcessor() {
+class DspAudioProcessor(private val bassCutDb: () -> Float = { 0f }) : BaseAudioProcessor() {
     private val chain = DspChain()
+    // DJ bass swap: extra low shelf (150 Hz) driven by the crossfade controller.
+    private var shelf: fr.offlinetune.core.dsp.Biquad? = null
+    private var shelfDb = 0f
     private var applied: DspSettings? = null
     private var scratch = FloatArray(0)
 
@@ -44,6 +47,13 @@ class DspAudioProcessor : BaseAudioProcessor() {
         else for (i in 0 until samples) scratch[i] = input.getShort() / 32768f
 
         if (s.enabled) chain.process(scratch, samples / fmt.channelCount)
+        val cut = bassCutDb()
+        if (cut < -0.1f) {
+            val ch = fmt.channelCount
+            val b = shelf ?: fr.offlinetune.core.dsp.Biquad(ch).also { shelf = it }
+            if (kotlin.math.abs(cut - shelfDb) > 0.5f) { b.set(fr.offlinetune.core.dsp.Biquad.Type.LOW_SHELF, 150.0, cut.toDouble(), 0.707, fmt.sampleRate); shelfDb = cut }
+            for (f in 0 until samples / ch) for (c in 0 until ch) { val i = f * ch + c; scratch[i] = b.process(scratch[i].toDouble(), c).toFloat() }
+        } else if (shelf != null) { shelf = null; shelfDb = 0f }
 
         val out = replaceOutputBuffer(remaining).order(ByteOrder.nativeOrder())
         if (float) for (i in 0 until samples) out.putFloat(scratch[i])
