@@ -14,6 +14,15 @@ L'utilisateur veut que l'app devienne son lecteur principal, avec trois amélior
 ## 2. Décisions prises avec l'utilisateur
 
 - **Qobuz est retiré** (décision de l'utilisateur) : il n'existe aucun moyen public de chercher dans son catalogue, et l'utilisateur refuse de réutiliser l'identifiant du lecteur web. Les maquettes montrent encore Qobuz : l'ignorer partout (pas de puce, pas de pastille, pas de ligne dans les sources). Il reste 7 plateformes.
+- **Sources retenues (vérifiées le 2026-11-04) :** YouTube Music, SoundCloud, Deezer et Apple Music (API iTunes Search) fonctionnent sans clé.
+  - **Spotify et Tidal** passent uniquement par leur API officielle. Des champs « Clé Spotify » (Client ID + Secret, flux *client credentials*) et « Clé Tidal » dans les Réglages permettent à l'utilisateur de coller les clés développeur qu'il a créées lui-même. Sans clé, la puce correspondante est grisée et indique « clé requise ».
+  - **Amazon Music est retiré**, comme Qobuz : pas d'API publique, et l'API Odesli a supprimé son accès sans clé (erreur 401 `PUBLIC_API_ACCESS_DEPRECATED`).
+  - **Il reste 6 plateformes.**
+  - **Interdit :**
+    - les extensions `.sflx` du registre Mornye ;
+    - tout code tiers chargé dynamiquement ;
+    - le jeton anonyme interne du lecteur web Spotify ;
+    - tout contournement du chiffrement ou des protections d'accès d'une plateforme.
 - **Pas de contournement des DRM** (rappel de la v1, confirmé : « oui »). L'audio de Spotify, Deezer, Apple Music, Amazon Music et Tidal n'est **jamais** téléchargé.
   - Ces plateformes servent à la recherche, aux infos et à la pochette.
   - La fiche affiche leur qualité, marquée « écoute dans leur appli », avec un bouton « Ouvrir ↗ ».
@@ -45,7 +54,7 @@ L'utilisateur veut que l'app devienne son lecteur principal, avec trois amélior
 
 ## 3. Objectifs
 
-1. Recherche fédérée sur les 7 plateformes, avec filtres, regroupement par chanson, pastilles et liste des sources par chanson (§2).
+1. Recherche fédérée sur les 6 plateformes (dont Spotify et Tidal si l'utilisateur a saisi ses clés), avec filtres, regroupement par chanson, pastilles et liste des sources par chanson (§2).
 2. Qualité affichée par source : réelle pour les sources téléchargeables, telle que proposée par la plateforme pour les autres.
 3. Listes de lecture :
    - créer, renommer, supprimer ;
@@ -81,13 +90,13 @@ L'utilisateur veut que l'app devienne son lecteur principal, avec trois amélior
   - Apple Music : API publique iTunes Search, sans clé.
   - YouTube Music et SoundCloud : NewPipeExtractor (déjà utilisé).
   - Spotify : page d'intégration publique (déjà utilisée) ; pour la recherche, au développeur de trouver un moyen sans compte.
-  - Tidal, Amazon Music : pas d'API de recherche publique simple. Le service de correspondance song.link / Odesli (sans clé, environ 10 requêtes par minute) donne, à partir d'un lien connu, les liens de la même chanson sur Spotify, Apple Music, Amazon Music, Deezer, Tidal, YouTube Music et SoundCloud.
+  - Tidal et Spotify : uniquement via leur API officielle avec les clés de l'utilisateur. Odesli n'est plus utilisable sans clé.
 - **Effet verre :** le vrai flou d'arrière-plan n'existe qu'à partir d'Android 12 (le S26 Ultra de l'utilisateur est sous Android API 37). En dessous, un fond translucide sans flou est acceptable.
 - **Langue et licence :** toute l'interface est en français, licence GPL-3.0, sans publicité ni traqueur.
 
 ## 7. Laissé au développeur (choix du développeur, à signaler dans le plan)
 
-- **Fournisseurs de recherche :** comment interroger chaque plateforme. Si une plateforme n'a aucun moyen fiable sans compte, ses résultats viennent des correspondances (Odesli), et le filtre de cette plateforme peut être plus lent et montrer moins de résultats. *Choix du développeur, accepté implicitement par l'approche §2.*
+- **Fournisseurs de recherche :** détails d'appel de chaque API officielle ou publique citée au §2.
 - **Regroupement :** comment reconnaître qu'il s'agit de la même chanson (titre/artiste normalisés comme dans `Matcher`, durée à ±3 s, ISRC quand il existe).
 - **Qualité par plateforme :** la valeur par titre quand l'API la donne, sinon le niveau maximal de la plateforme avec la mention « selon abonnement ».
 - **Emplacement des `.m3u8` :** dans un sous-dossier `Playlists/` du dossier de musique, avec des chemins relatifs. Encodage UTF-8, en-tête `#EXTM3U`, une ligne `#EXTINF:durée,Artiste - Titre` par titre. Les `.m3u8` déjà présents dans le dossier sont lus comme des listes.
@@ -100,12 +109,12 @@ L'utilisateur veut que l'app devienne son lecteur principal, avec trois amélior
 - **Les fichiers `.m3u8` font foi.** L'app relit les listes du dossier à chaque actualisation, y compris celles créées par Poweramp ou VLC, et réécrit le fichier là où il se trouve quand on modifie une liste. Supprimer une liste supprime son fichier, après confirmation.
 - **Titre supprimé du disque :** la ligne reste dans la liste, grisée, et elle est sautée à la lecture. Le fichier `.m3u8` n'est jamais nettoyé automatiquement.
 - **Dossier `Playlists/` :** il est dans le dossier de bibliothèque. Si le dossier de téléchargement n'est pas dans la bibliothèque, l'option « Ajouter à une playlist » de la fiche indique qu'elle ne fonctionne qu'avec un dossier de téléchargement placé dans la bibliothèque.
-- **Pastilles Tidal / Amazon (venant d'Odesli) :** elles se remplissent progressivement pour les premiers résultats, dans la limite du quota, et sont complètes à l'ouverture d'une chanson. Les autres pastilles apparaissent tout de suite.
+- **Pastilles :** une chanson porte la pastille d'une plateforme quand la recherche de cette plateforme l'a trouvée, regroupée par ISRC quand il existe, sinon par titre/artiste normalisés et durée à ±3 s.
 - **Pays des recherches :** FR (Apple Music, Deezer, Odesli). Ces plateformes ne servent qu'aux infos, sans lecture chez elles.
 
 ## 8. Vérification
 
-- **Tests sur PC (vrais appels réseau) :** une requête comme « daft punk one more time » renvoie des résultats d'au moins 4 plateformes. Une chanson connue montre ses sources avec la qualité. Chaque filtre ne renvoie que sa plateforme.
+- **Tests sur PC (vrais appels réseau) :** une requête comme « daft punk one more time » renvoie des résultats des 4 plateformes sans clé (Spotify et Tidal testés seulement si des clés sont fournies). Une chanson connue montre ses sources avec la qualité. Chaque filtre ne renvoie que sa plateforme.
 - **Tests unitaires `.m3u8` :** écriture et relecture, chemins relatifs, caractères accentués, titre supprimé du disque.
 - **Sur le téléphone de l'utilisateur (adb) :**
   - installation par-dessus la v1 sans perte de réglages ;
