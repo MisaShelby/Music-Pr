@@ -34,7 +34,10 @@ object Matcher {
     private fun cleanArtist(a: String) = a.replace(Regex("""\s*-\s*Topic$""", RegexOption.IGNORE_CASE), "")
         .replace(Regex("""VEVO$"""), "").trim()
 
-    private fun firstArtist(a: String) = ARTIST_SPLIT.split(a).firstOrNull { it.isNotBlank() } ?: a
+    private fun firstArtist(a: String) = firstArtistOf(a)
+
+    /** "Daft Punk, Pharrell Williams" → "Daft Punk". */
+    fun firstArtistOf(a: String): String = ARTIST_SPLIT.split(a).firstOrNull { it.isNotBlank() }?.trim() ?: a
 
     private fun jaccard(a: String, b: String): Double {
         val x = a.split(' ').filter { it.isNotEmpty() }.toSet()
