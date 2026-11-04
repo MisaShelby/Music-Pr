@@ -14,6 +14,12 @@ object Fades {
         return sin(x * PI / 2).toFloat() to cos(x * PI / 2).toFloat()
     }
 
+    /** Time given to the outgoing player to load and seek before the fade must begin. */
+    const val PREPARE_LEAD_MS = 1500L
+
+    fun shouldPrepareCrossfade(durationMs: Long, positionMs: Long, crossfadeMs: Long): Boolean =
+        shouldStartCrossfade(durationMs, positionMs, crossfadeMs + PREPARE_LEAD_MS) && durationMs >= 2 * crossfadeMs
+
     fun shouldStartCrossfade(durationMs: Long, positionMs: Long, crossfadeMs: Long): Boolean {
         if (durationMs <= 0 || crossfadeMs <= 0) return false
         if (durationMs < 2 * crossfadeMs) return false

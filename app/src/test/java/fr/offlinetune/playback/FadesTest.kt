@@ -19,6 +19,12 @@ class FadesTest {
         assertEquals(Fades.crossfadeGains(1f), Fades.crossfadeGains(2f))
     }
 
+    @Test fun `preparation starts early enough to be ready at the fade point`() {
+        // 6 s fade: the outgoing player is prepared up to PREPARE_LEAD_MS before the fade window.
+        assertEquals(true, Fades.shouldPrepareCrossfade(durationMs = 200_000, positionMs = 193_500, crossfadeMs = 6000))
+        assertEquals(false, Fades.shouldPrepareCrossfade(durationMs = 200_000, positionMs = 190_000, crossfadeMs = 6000))
+    }
+
     @Test fun `crossfade starts only when remaining time is within the window`() {
         assertEquals(true, Fades.shouldStartCrossfade(durationMs = 200_000, positionMs = 195_000, crossfadeMs = 6000))
         assertEquals(false, Fades.shouldStartCrossfade(durationMs = 200_000, positionMs = 150_000, crossfadeMs = 6000))

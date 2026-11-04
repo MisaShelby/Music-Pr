@@ -7,6 +7,7 @@ import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -18,26 +19,35 @@ import fr.offlinetune.settings.AppSettings
 /**
  * Owns the main ExoPlayer and an auxiliary one used only during crossfades.
  * [sessionPlayer] is what the MediaSession exposes: it adds pause/resume fades and crossfade on manual skip.
+ *
+ * Crossfade: the aux player loads the outgoing item paused (Preparing); once it is READY and positioned where
+ * main is, aux starts, main jumps to the next item muted, and both gains follow an equal-power curve (Fading).
+ * Any pause of main — user, call, headphones unplugged, error — stops the aux player at once.
  */
 @UnstableApi
 class CrossfadeController(private val context: Context) {
     @Volatile var settings: AppSettings = AppSettings()
 
     val main: ExoPlayer = buildPlayer(context, handleFocus = true)
-    private var aux: ExoPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
+
+    private sealed interface Xf {
+        data object Idle : Xf
+        data class Preparing(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, var seeked: Boolean = false) : Xf
+        data class Fading(val aux: ExoPlayer, val start: Long, val durationMs: Long) : Xf
+    }
+    private var xf: Xf = Xf.Idle
 
     // Volume = pause/resume fade × crossfade gain.
     private var fadeGain = 1f
     private var xfadeGain = 1f
-    private fun applyVolume() {
-        main.volume = fadeGain * xfadeGain
-    }
-
-    private var xfadeStart = 0L
-    private var xfadeDurationMs = 0L
     private var auxOutGain = 1f
     private var fadeAnim: Runnable? = null
+
+    private fun applyVolume() {
+        main.volume = fadeGain * xfadeGain
+        (xf as? Xf.Fading)?.aux?.volume = fadeGain * auxOutGain
+    }
 
     val sessionPlayer: Player = object : ForwardingPlayer(main) {
         override fun play() = playWithFade()
@@ -59,58 +69,94 @@ class CrossfadeController(private val context: Context) {
     }
 
     init {
+        main.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                // Covers audio focus loss (calls), headphones unplugged, end of queue…
+                if (!playWhenReady) cancelCrossfade()
+            }
+            override fun onPlayerError(error: PlaybackException) = cancelCrossfade()
+        })
         handler.post(tick)
     }
 
     private fun step() {
-        val a = aux
-        if (a != null) {
-            val t = (SystemClock.elapsedRealtime() - xfadeStart).toFloat() / xfadeDurationMs
-            val (gIn, gOut) = Fades.crossfadeGains(t)
-            xfadeGain = gIn; auxOutGain = gOut
-            applyVolume()
-            a.volume = fadeGain * auxOutGain
-            if (t >= 1f) finishCrossfade()
-            return
-        }
-        val s = settings
-        if (!s.crossfadeEnabled || !main.isPlaying || main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return
-        if (Fades.shouldStartCrossfade(main.duration, main.currentPosition, s.crossfadeSec * 1000L)) {
-            startCrossfade(next = true, durationMs = main.duration - main.currentPosition)
+        when (val s = xf) {
+            is Xf.Fading -> {
+                val t = (SystemClock.elapsedRealtime() - s.start).toFloat() / s.durationMs
+                val (gIn, gOut) = Fades.crossfadeGains(t)
+                xfadeGain = gIn; auxOutGain = gOut
+                applyVolume()
+                if (t >= 1f) cancelCrossfade()
+            }
+            is Xf.Preparing -> {
+                // Automatic transition reached its end before aux was ready: give up, main plays on gaplessly.
+                if (!s.manual && !main.isPlaying) cancelCrossfade()
+            }
+            Xf.Idle -> {
+                val st = settings
+                if (!st.crossfadeEnabled || st.crossfadeSec == 0 || !main.isPlaying) return
+                if (main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return
+                if (Fades.shouldPrepareCrossfade(main.duration, main.currentPosition, st.crossfadeSec * 1000L)) {
+                    prepare(next = true, manual = false)
+                }
+            }
         }
     }
 
     private fun crossfadeSkip(next: Boolean): Boolean {
         val s = settings
-        if (!s.crossfadeEnabled || !s.crossfadeOnSkip || s.crossfadeSec == 0 || !main.isPlaying || aux != null) return false
+        if (!s.crossfadeEnabled || !s.crossfadeOnSkip || s.crossfadeSec == 0 || !main.isPlaying || xf != Xf.Idle) return false
         if (next && !main.hasNextMediaItem()) return false
         if (!next && !main.hasPreviousMediaItem()) return false
-        startCrossfade(next, s.crossfadeSec * 1000L)
+        prepare(next, manual = true)
         return true
     }
 
-    /** The outgoing track keeps playing on [aux] while [main] moves on and fades in. */
-    private fun startCrossfade(next: Boolean, durationMs: Long) {
+    /** Loads the outgoing item on a fresh aux player, paused, at main's position. */
+    private fun prepare(next: Boolean, manual: Boolean) {
         val item = main.currentMediaItem ?: return
-        val position = main.currentPosition
         val a = buildPlayer(context, handleFocus = false)
-        a.setMediaItem(item, position)
-        a.volume = fadeGain
+        val p = Xf.Preparing(a, next, manual)
+        xf = p
+        a.setMediaItem(item, main.currentPosition)
+        a.playWhenReady = false
+        a.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (xf !== p || state != Player.STATE_READY) return
+                if (!p.seeked) {
+                    // Main kept playing while aux loaded: catch up to where main is now, then go.
+                    p.seeked = true
+                    a.seekTo(main.currentPosition + 30)
+                } else {
+                    go(p)
+                }
+            }
+            override fun onPlayerError(error: PlaybackException) { if (xf === p) cancelCrossfade() }
+        })
         a.prepare()
-        a.play()
-        aux = a
-        auxOutGain = 1f
-        xfadeGain = 0f
-        applyVolume()
-        if (next) main.seekToNextMediaItem() else main.seekToPreviousMediaItem()
-        xfadeStart = SystemClock.elapsedRealtime()
-        xfadeDurationMs = durationMs.coerceAtLeast(500)
     }
 
-    private fun finishCrossfade() {
-        aux?.release()
-        aux = null
+    private fun go(p: Xf.Preparing) {
+        val fadeMs = if (p.manual) settings.crossfadeSec * 1000L else (main.duration - main.currentPosition)
+        if (fadeMs < 300) { cancelCrossfade(); return }
+        auxOutGain = 1f
+        xf = Xf.Fading(p.aux, SystemClock.elapsedRealtime(), fadeMs)
+        p.aux.volume = fadeGain
+        p.aux.play()
+        xfadeGain = 0f
+        applyVolume()
+        if (p.next) main.seekToNextMediaItem() else main.seekToPreviousMediaItem()
+    }
+
+    private fun cancelCrossfade() {
+        when (val s = xf) {
+            is Xf.Preparing -> s.aux.release()
+            is Xf.Fading -> s.aux.release()
+            Xf.Idle -> {}
+        }
+        xf = Xf.Idle
         xfadeGain = 1f
+        auxOutGain = 1f
         applyVolume()
     }
 
@@ -122,9 +168,9 @@ class CrossfadeController(private val context: Context) {
         animateFade(to = 1f) {}
     }
 
+    /** Fades both players down together, then pauses (the crossfade is dropped by main's listener). */
     private fun pauseWithFade() {
         cancelFade()
-        if (aux != null) finishCrossfade()
         if (!settings.pauseFade || !main.isPlaying) { main.pause(); fadeGain = 1f; applyVolume(); return }
         animateFade(to = 0f) { main.pause(); fadeGain = 1f; applyVolume() }
     }
@@ -137,7 +183,6 @@ class CrossfadeController(private val context: Context) {
                 val t = ((SystemClock.elapsedRealtime() - start) / PAUSE_FADE_MS.toFloat()).coerceIn(0f, 1f)
                 fadeGain = from + (to - from) * t
                 applyVolume()
-                aux?.volume = fadeGain * auxOutGain
                 if (t < 1f) handler.postDelayed(this, 16) else { fadeAnim = null; done() }
             }
         }
@@ -152,7 +197,7 @@ class CrossfadeController(private val context: Context) {
 
     fun release() {
         handler.removeCallbacksAndMessages(null)
-        aux?.release()
+        cancelCrossfade()
         main.release()
     }
 
