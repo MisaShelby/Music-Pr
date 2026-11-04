@@ -167,7 +167,10 @@ private fun DownloadRow(item: DownloadItem, onRetry: () -> Unit) {
         when (val s = item.state) {
             DlState.Queued -> Text("En attente", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
             is DlState.Running -> LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth())
-            is DlState.Done -> Text("Enregistré dans « ${s.folderName} »", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
+            is DlState.Done -> Column {
+                Text("Enregistré dans « ${s.folderName} »", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
+                s.note?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            }
             is DlState.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 TextButton(onClick = onRetry) { Text("Réessayer") }

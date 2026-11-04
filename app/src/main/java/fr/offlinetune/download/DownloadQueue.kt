@@ -30,11 +30,11 @@ import java.util.concurrent.atomic.AtomicLong
 sealed interface DlState {
     data object Queued : DlState
     data class Running(val progress: Float) : DlState
-    data class Done(val folderName: String) : DlState
+    data class Done(val folderName: String, val note: String? = null) : DlState
     data class Failed(val message: String) : DlState
 }
 
-data class DownloadRequest(val sheet: Sheet, val edited: TrackInfo, val includeLyrics: Boolean)
+data class DownloadRequest(val sheet: Sheet, val edited: TrackInfo, val includeLyrics: Boolean, val playlistUris: List<String> = emptyList())
 data class DownloadItem(val id: Long, val label: String, val state: DlState, val request: DownloadRequest)
 
 /** One download at a time; each finished folder is copied into the chosen SAF folder and added to the library. */
@@ -87,12 +87,23 @@ class DownloadQueue(
             val folder = audio.parentFile!!
             val created = withContext(Dispatchers.IO) { copyToTree(folder, root) }
             folder.deleteRecursively()
-            library.addFolder(treeUri, created.uri)
-            set(id, DlState.Done(created.name ?: folder.name))
+            val added = library.addFolder(treeUri, created.uri, created.name ?: folder.name)
+            val playlistError = addToPlaylists(item.request.playlistUris, treeUri, added)
+            set(id, DlState.Done(created.name ?: folder.name, playlistError))
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             set(id, DlState.Failed(if (e is IllegalStateException) e.message ?: "Erreur" else e.userMessage()))
         }
+    }
+
+    /** Adds the downloaded track to the chosen playlists; only possible when downloads land in the library. */
+    private suspend fun addToPlaylists(uris: List<String>, treeUri: Uri, added: List<fr.offlinetune.library.LibTrack>): String? {
+        if (uris.isEmpty()) return null
+        if (settings.current().libraryTreeUri != treeUri.toString() || added.isEmpty()) {
+            return "Téléchargé, mais ajout à la liste impossible : le dossier de téléchargement doit être celui de la bibliothèque."
+        }
+        library.playlists.value.filter { it.file.uri in uris }.forEach { library.addToPlaylist(it, added) }
+        return null
     }
 
     private fun copyToTree(folder: File, root: DocumentFile): DocumentFile {

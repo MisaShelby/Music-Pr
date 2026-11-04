@@ -63,6 +63,10 @@ class SafNode(
 class LibraryRepository(private val context: Context, private val settings: SettingsStore) {
     private val _tracks = MutableStateFlow<List<LibTrack>>(emptyList())
     val tracks: StateFlow<List<LibTrack>> = _tracks.asStateFlow()
+    private val _playlists = MutableStateFlow<List<fr.offlinetune.playlist.Playlist>>(emptyList())
+    val playlists: StateFlow<List<fr.offlinetune.playlist.Playlist>> = _playlists.asStateFlow()
+    private var playlistFiles: List<PlaylistFile> = emptyList()
+    val playlistRepo = fr.offlinetune.playlist.PlaylistRepository(context)
     private val _state = MutableStateFlow<LibState>(LibState.Idle)
     val state: StateFlow<LibState> = _state.asStateFlow()
     private val cacheFile get() = File(context.filesDir, "library.json")
@@ -89,9 +93,11 @@ class LibraryRepository(private val context: Context, private val settings: Sett
             val result = withContext(Dispatchers.IO) {
                 val root = SafNode.root(context, tree)
                 root.children() // fails fast if the folder is gone (SD card removed)
-                scanner.scan(root, _tracks.value.associateBy { it.uri })
+                scanner.scanAll(root, _tracks.value.associateBy { it.uri })
             }
-            publish(result)
+            publish(result.tracks)
+            playlistFiles = result.playlists
+            reloadPlaylists()
             _state.value = LibState.Idle
         } catch (e: SecurityException) {
             _state.value = LibState.NeedsFolder
@@ -100,14 +106,52 @@ class LibraryRepository(private val context: Context, private val settings: Sett
         }
     }
 
-    /** Scans only a freshly downloaded folder so it appears at once. */
-    suspend fun addFolder(treeUri: Uri, folderDocumentUri: Uri) = mutex.withLock {
+    /** Scans only a freshly downloaded folder (directly under the music root) so it appears at once. */
+    suspend fun addFolder(treeUri: Uri, folderDocumentUri: Uri, folderName: String): List<LibTrack> = mutex.withLock {
         val added = withContext(Dispatchers.IO) {
-            runCatching { scanner.scan(SafNode.folder(context, treeUri, folderDocumentUri), emptyMap()) }.getOrDefault(emptyList())
+            runCatching { scanner.scanAll(SafNode.folder(context, treeUri, folderDocumentUri), emptyMap(), listOf(folderName)).tracks }
+                .getOrDefault(emptyList())
         }
-        if (added.isEmpty()) return@withLock
+        if (added.isEmpty()) return@withLock added
         val ids = added.map { it.uri }.toSet()
         publish(_tracks.value.filterNot { it.uri in ids } + added)
+        added
+    }
+
+    // --- playlists (.m3u8 files are the truth) ---
+
+    suspend fun reloadPlaylists() {
+        val tracks = _tracks.value
+        _playlists.value = playlistFiles.map { playlistRepo.read(it, tracks) }.sortedBy { it.name.lowercase() }
+    }
+
+    suspend fun createPlaylist(name: String): fr.offlinetune.playlist.Playlist? {
+        val tree = grantedTree(settings.current().libraryTreeUri) ?: return null
+        val f = playlistRepo.create(tree, name)
+        playlistFiles = playlistFiles + f
+        reloadPlaylists()
+        return _playlists.value.firstOrNull { it.file.uri == f.uri }
+    }
+
+    suspend fun addToPlaylist(p: fr.offlinetune.playlist.Playlist, tracks: List<LibTrack>) {
+        val fresh = playlistRepo.read(p.file, _tracks.value)
+        playlistRepo.add(fresh, tracks.filter { t -> fresh.items.none { it.track?.uri == t.uri } })
+        reloadPlaylists()
+    }
+
+    suspend fun removeFromPlaylist(p: fr.offlinetune.playlist.Playlist, index: Int) { playlistRepo.remove(p, index); reloadPlaylists() }
+    suspend fun movePlaylistItem(p: fr.offlinetune.playlist.Playlist, from: Int, to: Int) { playlistRepo.move(p, from, to); reloadPlaylists() }
+
+    suspend fun renamePlaylist(p: fr.offlinetune.playlist.Playlist, name: String) {
+        val nf = playlistRepo.rename(p, name)
+        playlistFiles = playlistFiles.map { if (it.uri == p.file.uri) nf else it }
+        reloadPlaylists()
+    }
+
+    suspend fun deletePlaylist(p: fr.offlinetune.playlist.Playlist) {
+        playlistRepo.delete(p)
+        playlistFiles = playlistFiles.filterNot { it.uri == p.file.uri }
+        reloadPlaylists()
     }
 
     suspend fun readText(uri: String): String? = withContext(Dispatchers.IO) {

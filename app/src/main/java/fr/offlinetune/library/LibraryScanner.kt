@@ -15,7 +15,15 @@ data class LibTrack(
     val lrcUri: String?,
     val coverUri: String?,
     val lastModified: Long,
+    /** Folder names + file name from the music root (for playlist relative paths). */
+    val pathSegments: List<String> = emptyList(),
 )
+
+/** A .m3u8 / .m3u file found in the music folder. [dirSegments] = its folder from the music root. */
+@Serializable
+data class PlaylistFile(val uri: String, val name: String, val dirSegments: List<String>)
+
+data class ScanResult(val tracks: List<LibTrack>, val playlists: List<PlaylistFile>)
 
 data class TagData(
     val title: String?,
@@ -39,29 +47,33 @@ interface TreeNode {
 /** Recursive scan: audio files, same-name .lrc, cover.jpg / folder.jpg; unreadable parts are skipped. */
 class LibraryScanner(private val tags: (uri: String) -> TagData?) {
 
-    fun scan(root: TreeNode, previous: Map<String, LibTrack>): List<LibTrack> {
+    fun scan(root: TreeNode, previous: Map<String, LibTrack>): List<LibTrack> = scanAll(root, previous).tracks
+
+    fun scanAll(root: TreeNode, previous: Map<String, LibTrack>, rootSegments: List<String> = emptyList()): ScanResult {
         val out = mutableListOf<LibTrack>()
-        walk(root, previous, out)
-        return out
+        val lists = mutableListOf<PlaylistFile>()
+        walk(root, previous, out, lists, rootSegments)
+        return ScanResult(out, lists)
     }
 
-    private fun walk(dir: TreeNode, previous: Map<String, LibTrack>, out: MutableList<LibTrack>) {
+    private fun walk(dir: TreeNode, previous: Map<String, LibTrack>, out: MutableList<LibTrack>, lists: MutableList<PlaylistFile>, segs: List<String>) {
         val kids = try { dir.children() } catch (e: Exception) { return }
         val byName = kids.associateBy { it.name.lowercase() }
         val cover = COVER_NAMES.firstNotNullOfOrNull { byName[it] }?.uri
         for (k in kids) {
             if (k.name.startsWith(".")) continue
-            if (k.isDir) { walk(k, previous, out); continue }
+            if (k.isDir) { walk(k, previous, out, lists, segs + k.name); continue }
             val ext = k.name.substringAfterLast('.', "").lowercase()
+            if (ext == "m3u8" || ext == "m3u") { lists += PlaylistFile(k.uri, k.name.substringBeforeLast('.'), segs); continue }
             if (ext !in AUDIO) continue
             val base = k.name.substringBeforeLast('.')
             val lrc = byName["${base.lowercase()}.lrc"]?.uri
             val prev = previous[k.uri]
             if (prev != null && prev.lastModified == k.lastModified) {
-                out += prev.copy(lrcUri = lrc, coverUri = cover)
+                out += prev.copy(lrcUri = lrc, coverUri = cover, pathSegments = segs + k.name)
                 continue
             }
-            out += track(k, base, lrc, cover)
+            out += track(k, base, lrc, cover).copy(pathSegments = segs + k.name)
         }
     }
 
