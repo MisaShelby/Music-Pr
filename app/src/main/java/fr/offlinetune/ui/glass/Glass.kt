@@ -66,7 +66,8 @@ fun AppBackdrop(coverKey: String?, accent: Color, modifier: Modifier = Modifier,
             Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(a.copy(alpha = 0.35f), Color.Transparent), radius = 1400f)))
         }
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Ink.Background.copy(alpha = 0.35f), Ink.Background.copy(alpha = 0.85f)))))
-        content()
+        // Screens drawn on the transparent backdrop must get light text by default.
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Ink.Text) { content() }
     }
 }
 

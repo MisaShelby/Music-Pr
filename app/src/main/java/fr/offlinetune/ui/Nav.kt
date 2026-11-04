@@ -71,6 +71,7 @@ fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
     AppBackdrop(coverKey, MaterialTheme.colorScheme.primary) {
         Scaffold(
             containerColor = Color.Transparent,
+            contentColor = fr.offlinetune.ui.theme.Ink.Text,
             bottomBar = {
                 Column {
                     if (state.mediaId != null) {

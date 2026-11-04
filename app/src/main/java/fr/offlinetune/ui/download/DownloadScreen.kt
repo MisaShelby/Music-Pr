@@ -75,6 +75,7 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
     val phase by model.phase.collectAsState()
     val input by model.input.collectAsState()
     val downloads by app.downloads.items.collectAsState()
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
     LaunchedEffect(sharedText) {
         if (sharedText != null) { model.submit(sharedText); onSharedConsumed() }
@@ -99,7 +100,7 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
                 placeholder = { Text("Coller un lien ou rechercher") },
                 singleLine = true, shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { model.submit() }),
+                keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); model.submit() }),
                 trailingIcon = {
                     if (input.isNotEmpty()) IconButton(onClick = { model.reset() }) { Icon(Icons.Rounded.Close, "Effacer") }
                 },
@@ -117,7 +118,7 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
                     Icon(Icons.Rounded.ContentPaste, null); Spacer(Modifier.width(6.dp)); Text("Coller")
                 }
                 Spacer(Modifier.width(4.dp))
-                FilledTonalButton(onClick = { model.submit() }, enabled = input.isNotBlank()) { Text("Valider") }
+                FilledTonalButton(onClick = { keyboard?.hide(); model.submit() }, enabled = input.isNotBlank()) { Text("Valider") }
             }
         }
 
