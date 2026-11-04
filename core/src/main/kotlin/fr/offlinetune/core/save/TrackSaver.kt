@@ -13,6 +13,7 @@ import fr.offlinetune.core.ogg.OggOpusWriter
 import fr.offlinetune.core.ogg.VorbisComment
 import fr.offlinetune.core.ogg.WebmReader
 import fr.offlinetune.core.tags.Id3Writer
+import fr.offlinetune.core.tags.Mp4Defrag
 import fr.offlinetune.core.tags.Mp4Tags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -75,7 +76,15 @@ class TrackSaver(
             }
             Container.MP3 -> Id3Writer.rewrite(raw, audio, info, cover, lyrics)
             // Tags in the moov box; if the file layout is unexpected, keep the audio untouched (cover/lrc stay beside it).
-            Container.M4A -> runCatching { Mp4Tags.write(raw, audio, info, cover, lyrics) }.onFailure { raw.copyTo(audio, overwrite = true) }
+            // Fragmented MP4 (SoundCloud HLS) → plain MP4 so players get a duration and can seek; then tags in moov.
+            // If the layout is unexpected, keep the audio untouched (cover/lrc stay beside it).
+            Container.M4A -> {
+                val plain = if (runCatching { Mp4Defrag.isFragmented(raw) }.getOrDefault(false)) {
+                    File(raw.parentFile, "plain.tmp").takeIf { runCatching { Mp4Defrag.defragment(raw, it) }.isSuccess } ?: raw
+                } else raw
+                runCatching { Mp4Tags.write(plain, audio, info, cover, lyrics) }.onFailure { plain.copyTo(audio, overwrite = true) }
+                if (plain != raw) plain.delete()
+            }
         }
     }
 
