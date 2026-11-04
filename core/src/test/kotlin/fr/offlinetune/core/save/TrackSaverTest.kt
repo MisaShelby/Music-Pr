@@ -55,6 +55,20 @@ class TrackSaverTest {
         assertTrue(name.startsWith("Daft Punk - xxx"))
     }
 
+    @Test fun `non latin names fit the 255 byte file name limit`() {
+        val name = TrackSaver.folderName(info.copy(artist = "宇多田ヒカル", title = "あ".repeat(100)))
+        assertTrue(name.toByteArray(Charsets.UTF_8).size <= TrackSaver.MAX_NAME_BYTES, "${name.toByteArray().size}")
+        assertTrue(name.startsWith("宇多田ヒカル - あ"))
+        // room left for ".", ".part", " (99)" and ".opus"
+        assertTrue(".$name.part".toByteArray().size <= 255 && "$name (99).opus".toByteArray().size <= 255)
+    }
+
+    @Test fun `long non latin title saves for real`() = runBlocking {
+        val edited = info.copy(artist = "宇多田ヒカル", title = "あ".repeat(100))
+        val audio = saver().save(sheet, edited, true, root) {}
+        assertTrue(audio.exists())
+    }
+
     @Test fun `full save writes audio with tags, lrc and cover`() = runBlocking {
         val audio = saver().save(sheet, info, includeLyrics = true, root = root) {}
         val dir = File(root, "Daft Punk - One More Time")

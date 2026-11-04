@@ -6,6 +6,7 @@ import fr.offlinetune.core.meta.NewPipeSource
 import fr.offlinetune.core.meta.ResolvedStream
 import fr.offlinetune.core.model.Container
 import fr.offlinetune.core.model.Sheet
+import fr.offlinetune.core.model.StorageError
 import fr.offlinetune.core.model.TrackInfo
 import fr.offlinetune.core.model.Unsupported
 import fr.offlinetune.core.ogg.OggOpusWriter
@@ -31,7 +32,7 @@ class TrackSaver(
         root.mkdirs()
         val part = File(root, ".$name.part")
         part.deleteRecursively()
-        part.mkdirs()
+        if (!part.mkdirs()) throw StorageError("cannot create $part")
         try {
             val stream = resolve(source.url)
             val raw = File(part, "source.tmp")
@@ -53,7 +54,7 @@ class TrackSaver(
             return File(final, audio.name)
         } catch (e: Throwable) {
             part.deleteRecursively()
-            throw e
+            throw if (e is java.io.IOException) StorageError(e.message ?: "write failed", e) else e
         }
     }
 
@@ -78,6 +79,7 @@ class TrackSaver(
 
     companion object {
         private const val MAX_NAME = 120
+        const val MAX_NAME_BYTES = 200
         private val FORBIDDEN = Regex("""[\\/:*?"<>|\p{Cntrl}]""")
 
         fun create(newPipe: NewPipeSource = NewPipeSource(), downloader: StreamDownloader = StreamDownloader()) =
@@ -88,12 +90,18 @@ class TrackSaver(
             return s.ifEmpty { "Sans titre" }
         }
 
+        /** ≤ 120 characters and ≤ [MAX_NAME_BYTES] UTF-8 bytes (Android file systems allow 255 bytes per name). */
         fun folderName(info: TrackInfo): String {
-            val full = sanitize("${info.artist} - ${info.title}")
-            if (full.length <= MAX_NAME) return full
-            var cut = MAX_NAME
-            if (Character.isHighSurrogate(full[cut - 1])) cut--
-            return full.substring(0, cut).trim(' ', '.')
+            var s = sanitize("${info.artist} - ${info.title}")
+            if (s.length > MAX_NAME) s = cutAt(s, MAX_NAME)
+            while (s.toByteArray(Charsets.UTF_8).size > MAX_NAME_BYTES) s = cutAt(s, s.length - 1)
+            return s.trim(' ', '.').ifEmpty { "Sans titre" }
+        }
+
+        private fun cutAt(s: String, n: Int): String {
+            var cut = n
+            if (cut > 0 && Character.isHighSurrogate(s[cut - 1])) cut--
+            return s.substring(0, cut)
         }
 
         fun uniqueDir(root: File, name: String): File {

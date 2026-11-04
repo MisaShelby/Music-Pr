@@ -72,6 +72,11 @@ class NetworkLost(cause: Throwable? = null) : OfflineTuneException("network lost
     override fun userMessage() = "Connexion perdue pendant le téléchargement"
 }
 
+/** Local write failure (full storage, folder not writable): never reported as a network problem. */
+class StorageError(detail: String, cause: Throwable? = null) : OfflineTuneException("storage: $detail", cause) {
+    override fun userMessage() = "Espace insuffisant ou dossier non accessible"
+}
+
 class Unsupported(val what: String) : OfflineTuneException("unsupported: $what") {
     override fun userMessage() = "Non pris en charge : $what"
 }

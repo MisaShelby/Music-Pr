@@ -71,6 +71,15 @@ class StreamDownloaderTest {
         }
     }
 
+    @Test fun `unwritable destination is a storage error, not a network error`() {
+        rangeServer().use { s ->
+            val dest = File(tmp, "is-a-dir").apply { mkdirs() } // cannot be opened as a file
+            assertThrows<fr.offlinetune.core.model.StorageError> {
+                runBlocking { StreamDownloader().download(ResolvedStream(s.url("/a").toString(), fmt, 10, false, null), dest) {} }
+            }
+        }
+    }
+
     @Test fun `hls playlist with init segment is concatenated`() = runBlocking {
         val parts = listOf("INIT", "seg0-", "seg1-", "seg2").map { it.toByteArray() }
         MockWebServer().use { s ->

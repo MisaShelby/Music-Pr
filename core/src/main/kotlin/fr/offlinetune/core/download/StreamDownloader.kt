@@ -2,6 +2,7 @@ package fr.offlinetune.core.download
 
 import fr.offlinetune.core.meta.ResolvedStream
 import fr.offlinetune.core.model.NetworkLost
+import fr.offlinetune.core.model.StorageError
 import fr.offlinetune.core.net.Http
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -24,7 +25,8 @@ class StreamDownloader(
 ) {
     suspend fun download(stream: ResolvedStream, dest: File, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {
         try {
-            dest.outputStream().buffered().use { out ->
+            val file = try { dest.outputStream() } catch (e: IOException) { throw StorageError("cannot open $dest", e) }
+            StorageOut(file.buffered()).use { out ->
                 if (stream.isHls) hls(stream.url, out, onProgress) else progressive(stream.url, stream.contentLength, out, onProgress)
             }
             onProgress(1f)
@@ -32,6 +34,15 @@ class StreamDownloader(
             dest.delete()
             throw if (e is IOException) NetworkLost(e) else e
         }
+    }
+
+    /** Write-side failures (full storage…) become [StorageError] instead of looking like network losses. */
+    private class StorageOut(private val out: OutputStream) : OutputStream() {
+        private inline fun <T> io(block: () -> T): T = try { block() } catch (e: IOException) { throw StorageError("write failed", e) }
+        override fun write(b: Int) = io { out.write(b) }
+        override fun write(b: ByteArray, off: Int, len: Int) = io { out.write(b, off, len) }
+        override fun flush() = io { out.flush() }
+        override fun close() = io { out.close() }
     }
 
     private suspend fun progressive(url: String, knownLength: Long?, out: OutputStream, onProgress: (Float) -> Unit) {
