@@ -2,6 +2,27 @@ package fr.offlinetune.ui.player
 
 import android.content.Context
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.exponentialDecay
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.asin
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.sin
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -121,6 +142,111 @@ fun ClassicSeekBar(progress: Float, dragging: Boolean, onDrag: (Float) -> Unit, 
                 Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(h).clip(RoundedCornerShape(50))
                     .background(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.85f), Color.White))),
             )
+        }
+    }
+}
+
+
+/** Bars visible on each side of the centre of the globe. */
+private const val DRUM_HALF = 24f
+
+/** One bar for about 0.7 s of music, so the globe turns at a steady pace whatever the song's length. */
+fun drumBarsFor(durationMs: Long): Int = (durationMs / 700).toInt().coerceIn(90, 600)
+
+/** Playback position that advances every frame (instead of jumping twice a second), so the globe turns smoothly. */
+@Composable
+fun rememberSmoothProgress(positionMs: Long, durationMs: Long, playing: Boolean, speed: Float): Float {
+    var p by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(positionMs, durationMs, playing, speed) {
+        val dur = durationMs.coerceAtLeast(1).toFloat()
+        p = (positionMs / dur).coerceIn(0f, 1f)
+        if (!playing) return@LaunchedEffect
+        val t0 = withFrameNanos { it }
+        while (isActive) withFrameNanos { now -> p = ((positionMs + (now - t0) / 1e6f * speed) / dur).coerceIn(0f, 1f) }
+    }
+    return p
+}
+
+/**
+ * The song's waveform wrapped around a turning globe: the current moment sits in the middle, bars slide
+ * towards the edges and get thinner and dimmer as they go round. Drag to turn it (it keeps spinning a little
+ * when you let go), or tap a bar to roll to it.
+ */
+@Composable
+fun WaveDrum(bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRelease: () -> Unit, modifier: Modifier = Modifier) {
+    val accent = MaterialTheme.colorScheme.primary
+    val scope = rememberCoroutineScope()
+    val anim = remember { Animatable(0f) }
+    val current by rememberUpdatedState(progress)
+    val count by rememberUpdatedState(bars?.size ?: 200)
+    val drag by rememberUpdatedState(onDrag)
+    val release by rememberUpdatedState(onRelease)
+    val quarter = (PI / 2).toFloat()
+
+    Canvas(
+        modifier
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { o ->
+                    val r = size.width / 2f
+                    val angle = asin(((o.x - r) / r).coerceIn(-1f, 1f))
+                    val target = (current + angle / quarter * DRUM_HALF / count).coerceIn(0f, 1f)
+                    scope.launch {
+                        anim.snapTo(current)
+                        anim.animateTo(target, tween(520, easing = FastOutSlowInEasing)) { drag(value) }
+                        release()
+                    }
+                })
+            }
+            .pointerInput(Unit) {
+                val tracker = VelocityTracker()
+                var pos = 0f
+                fun perPx() = DRUM_HALF / quarter / (size.width / 2f) / count
+                detectHorizontalDragGestures(
+                    onDragStart = { tracker.resetTracking(); pos = current; scope.launch { anim.stop() }; drag(pos) },
+                    onDragEnd = {
+                        val v = -tracker.calculateVelocity().x * perPx()
+                        scope.launch {
+                            anim.snapTo(pos)
+                            anim.updateBounds(0f, 1f)
+                            anim.animateDecay(v, exponentialDecay(frictionMultiplier = 2.2f)) { drag(value) }
+                            anim.updateBounds(null, null)
+                            release()
+                        }
+                    },
+                    onDragCancel = { release() },
+                ) { change, dx ->
+                    change.consume()
+                    tracker.addPosition(change.uptimeMillis, change.position)
+                    pos = (pos - dx * perPx()).coerceIn(0f, 1f)
+                    drag(pos)
+                }
+            },
+    ) {
+        val n = bars?.size ?: 200
+        val c = progress * n
+        val r = size.width / 2f
+        val mid = size.height / 2
+        val baseW = (quarter * r / DRUM_HALF) * 0.62f
+        val lo = bars?.minOrNull() ?: 0f
+        val span = ((bars?.maxOrNull() ?: 1f) - lo).coerceAtLeast(0.05f)
+        val playedBottom = lerpColor(accent, Color.White, 0.35f)
+        val from = floor(c - DRUM_HALF).toInt() - 1
+        val to = ceil(c + DRUM_HALF).toInt() + 1
+        for (i in from..to) {
+            if (i < 0 || i >= n) continue
+            val angle = (i + 0.5f - c) / DRUM_HALF * quarter
+            if (abs(angle) >= quarter) continue
+            val depth = cos(angle) // 1 in front, 0 at the edge of the globe
+            val x = r + r * sin(angle)
+            val w = (baseW * depth).coerceAtLeast(1.5f)
+            val v = bars?.let { ((it[i] - lo) / span).coerceIn(0f, 1f) } ?: 0f
+            val h = ((0.42f + 0.58f * v) * size.height * (0.78f + 0.22f * depth)).coerceAtLeast(w)
+            val top = mid - h / 2
+            val alpha = 0.18f + 0.82f * depth
+            if (i + 0.5f <= c) drawRoundRect(
+                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.97f * alpha), playedBottom.copy(alpha = 0.97f * alpha)), startY = top, endY = top + h),
+                Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2),
+            ) else drawRoundRect(Color.White.copy(alpha = 0.42f * alpha), Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2))
         }
     }
 }

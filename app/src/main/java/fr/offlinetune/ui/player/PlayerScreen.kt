@@ -134,8 +134,8 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
 
             var dragging by remember { mutableStateOf<Float?>(null) }
             val dur = state.durationMs.coerceAtLeast(1)
-            val waveform = rememberWaveform(context, state.mediaId, state.durationMs)
-            val progress = dragging ?: (state.positionMs.toFloat() / dur).coerceIn(0f, 1f)
+            val waveform = rememberWaveform(context, state.mediaId, state.durationMs, drumBarsFor(state.durationMs))
+            val progress = dragging ?: rememberSmoothProgress(state.positionMs, state.durationMs, state.isPlaying, state.speed)
             val onDrag: (Float) -> Unit = { dragging = it }
             val onRelease: () -> Unit = { dragging?.let { app.player.seekTo((it * dur).toLong()) }; dragging = null }
             val elapsed = formatDuration(dragging?.let { (it * dur).toLong() } ?: state.positionMs).ifEmpty { "0:00" }
@@ -144,8 +144,8 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
             Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                 if (!showLyrics && viz == VizMode.FULL) {
                     // Plein écran: the song's waveform takes the cover's place, seekable everywhere.
-                    Box(Modifier.fillMaxSize().seekGestures(onDrag, onRelease)) {
-                        WaveformView(waveform, progress, Modifier.fillMaxSize().padding(vertical = 8.dp))
+                    Box(Modifier.fillMaxSize()) {
+                        WaveDrum(waveform, progress, onDrag, onRelease, Modifier.fillMaxSize().padding(vertical = 8.dp))
                         TimeCorners(elapsed, total, dragging != null)
                     }
                 } else if (showLyrics) {
@@ -211,8 +211,8 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                 VizMode.TRANSPARENT -> {
                     // The song's waveform behind see-through controls; tap or slide on it to move in the song.
                     Box(Modifier.fillMaxWidth().height(200.dp).padding(top = 10.dp)) {
-                        Box(Modifier.fillMaxSize().seekGestures(onDrag, onRelease)) {
-                            WaveformView(waveform, progress, Modifier.fillMaxSize().padding(bottom = 6.dp))
+                        Box(Modifier.fillMaxSize()) {
+                            WaveDrum(waveform, progress, onDrag, onRelease, Modifier.fillMaxSize().padding(bottom = 6.dp))
                             TimeCorners(elapsed, total, dragging != null)
                         }
                         Box(Modifier.fillMaxSize().padding(bottom = 14.dp), contentAlignment = Alignment.Center) { transport() }
