@@ -25,8 +25,14 @@ object PlaylistResolver {
     fun resolve(file: PlaylistFile, text: String, tracks: List<LibTrack>): Playlist {
         val byPath = tracks.associateBy { it.pathSegments.joinToString("/").lowercase() }
         val items = M3u8.parse(text).map { e ->
-            val segs = M3u8.resolve(file.dirSegments, e.path)
-            PlaylistItem(e, byPath[segs.joinToString("/").lowercase()])
+            val abs = M3u8.absoluteSegments(e.path)
+            val track = if (abs != null) {
+                // Absolute path (/storage/emulated/0/Music/…): match the longest ending that is a library path.
+                abs.indices.firstNotNullOfOrNull { i -> byPath[abs.drop(i).joinToString("/").lowercase()] }
+            } else {
+                byPath[M3u8.resolve(file.dirSegments, e.path).joinToString("/").lowercase()]
+            }
+            PlaylistItem(e, track)
         }
         return Playlist(file, items)
     }
@@ -62,13 +68,19 @@ class PlaylistRepository(private val context: Context) {
 
     suspend fun read(file: PlaylistFile, tracks: List<LibTrack>): Playlist = withContext(Dispatchers.IO) {
         val text = runCatching {
-            context.contentResolver.openInputStream(Uri.parse(file.uri))?.use { it.readBytes().toString(Charsets.UTF_8) }
+            context.contentResolver.openInputStream(Uri.parse(file.uri))?.use { M3u8.decode(it.readBytes()).first }
         }.getOrNull() ?: ""
         PlaylistResolver.resolve(file, text, tracks)
     }
 
+    /** .m3u8 is always UTF-8; an old .m3u keeps the encoding it was found in (often windows-1252). */
     private suspend fun write(file: PlaylistFile, entries: List<M3uEntry>) = withContext(Dispatchers.IO) {
-        context.contentResolver.openOutputStream(Uri.parse(file.uri), "wt")!!.use { it.write(M3u8.write(entries).toByteArray(Charsets.UTF_8)) }
+        val uri = Uri.parse(file.uri)
+        val charset = if (file.uri.endsWith(".m3u", ignoreCase = true)) {
+            runCatching { context.contentResolver.openInputStream(uri)?.use { M3u8.decode(it.readBytes()).second } }.getOrNull() ?: Charsets.UTF_8
+        } else Charsets.UTF_8
+        val out = context.contentResolver.openOutputStream(uri, "wt") ?: throw IllegalStateException("Liste non modifiable")
+        out.use { it.write(M3u8.write(entries).toByteArray(charset)) }
     }
 
     suspend fun create(treeUri: Uri, name: String): PlaylistFile = withContext(Dispatchers.IO) {
@@ -87,7 +99,7 @@ class PlaylistRepository(private val context: Context) {
 
     /** All edits re-read the file first, so a change made meanwhile (download, other player) is kept. */
     private suspend fun current(file: PlaylistFile): List<M3uEntry> = withContext(Dispatchers.IO) {
-        context.contentResolver.openInputStream(Uri.parse(file.uri))?.use { M3u8.parse(it.readBytes().toString(Charsets.UTF_8)) }
+        context.contentResolver.openInputStream(Uri.parse(file.uri))?.use { M3u8.parse(M3u8.decode(it.readBytes()).first) }
             ?: throw IllegalStateException("Liste illisible")
     }
 

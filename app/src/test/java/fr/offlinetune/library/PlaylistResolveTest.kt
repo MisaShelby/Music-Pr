@@ -55,4 +55,10 @@ class PlaylistResolveTest {
         assertNull(p.items[1].track)
         assertEquals("Gone", p.items[1].entry.label)
     }
+
+    @Test fun `absolute poweramp paths resolve by their end`() {
+        val r = LibraryScanner { null }.scanAll(tree, emptyMap())
+        val p = PlaylistResolver.resolve(r.playlists.first { it.name == "old" }, "/storage/emulated/0/Music/A - B/A - B.opus\n", r.tracks)
+        assertEquals("u:A - B.opus", p.items.single().track?.uri)
+    }
 }

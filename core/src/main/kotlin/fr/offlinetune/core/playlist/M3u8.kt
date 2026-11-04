@@ -36,6 +36,30 @@ object M3u8 {
         return out
     }
 
+    private val CP1252 = java.nio.charset.Charset.forName("windows-1252")
+
+    /** UTF-8 when the bytes are valid UTF-8, otherwise windows-1252 (old .m3u from other players). */
+    fun decode(bytes: ByteArray): Pair<String, java.nio.charset.Charset> {
+        val dec = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+        return try {
+            dec.decode(java.nio.ByteBuffer.wrap(bytes)).toString() to Charsets.UTF_8
+        } catch (e: java.nio.charset.CharacterCodingException) {
+            String(bytes, CP1252) to CP1252
+        }
+    }
+
+    /** Segments of an absolute path or file:// URL (percent-decoded); null for a relative path. */
+    fun absoluteSegments(path: String): List<String>? {
+        val p = when {
+            path.startsWith("file://") -> java.net.URLDecoder.decode(path.removePrefix("file://").replace("+", "%2B"), "UTF-8")
+            path.startsWith("/") -> path
+            else -> return null
+        }
+        return p.split('/').filter { it.isNotEmpty() }
+    }
+
     /** Relative path from a folder to a file, both given as segments from the music root. */
     fun relative(fromDir: List<String>, toFile: List<String>): String {
         var common = 0

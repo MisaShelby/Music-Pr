@@ -33,4 +33,18 @@ class M3u8Test {
         assertEquals("b/c.mp3", M3u8.relative(listOf("a"), listOf("a", "b", "c.mp3")))
         assertEquals(listOf("a", "b", "c.mp3"), M3u8.resolve(listOf("a"), "./b/c.mp3"))
     }
+
+    @Test fun `windows-1252 m3u is decoded, utf-8 kept`() {
+        val latin = "#EXTM3U\nÉté.mp3\n".toByteArray(Charsets.ISO_8859_1)
+        val (t1, c1) = M3u8.decode(latin)
+        assertEquals("#EXTM3U\nÉté.mp3\n", t1); assertEquals("windows-1252", c1.name().lowercase())
+        val (t2, c2) = M3u8.decode("Été 🎵.opus".toByteArray(Charsets.UTF_8))
+        assertEquals("Été 🎵.opus", t2); assertEquals(Charsets.UTF_8, c2)
+    }
+
+    @Test fun `absolute and file url paths are normalised to segments`() {
+        assertEquals(listOf("storage", "emulated", "0", "Music", "A - B", "A B.mp3"), M3u8.absoluteSegments("file:///storage/emulated/0/Music/A%20-%20B/A%20B.mp3"))
+        assertEquals(listOf("sdcard", "Music", "x.mp3"), M3u8.absoluteSegments("/sdcard/Music/x.mp3"))
+        assertEquals(null, M3u8.absoluteSegments("../x.mp3"))
+    }
 }
