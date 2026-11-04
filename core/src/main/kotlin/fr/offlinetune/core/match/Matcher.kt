@@ -80,7 +80,7 @@ object Matcher {
 
         val rawRef = refTitle.lowercase()
         val rawCand = cand.title.lowercase()
-        val penalty = if (VARIANTS.any { Regex("""\b$it\b""").containsMatchIn(rawCand) && !rawRef.contains(it) }) 0.3 else 0.0
+        val penalty = if (VARIANTS.any { val w = Regex("""\b$it\b"""); w.containsMatchIn(rawCand) && !w.containsMatchIn(rawRef) }) 0.3 else 0.0
 
         val gap = if (refDurationSec != null && cand.durationSec != null) abs(refDurationSec - cand.durationSec) else null
         val score = (0.6 * titleSim + 0.4 * artistScore - penalty - 0.02 * (gap ?: 0)).coerceAtLeast(0.0)

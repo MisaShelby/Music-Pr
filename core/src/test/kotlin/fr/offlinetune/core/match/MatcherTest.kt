@@ -52,4 +52,10 @@ class MatcherTest {
         val s = Matcher.score("Get Lucky (feat. Pharrell Williams)", "Daft Punk, Pharrell Williams", 248, cand("Get Lucky", "Daft Punk", 249))
         assertTrue(s.score >= 0.9, "${s.score}")
     }
+
+    @Test fun `live penalty still applies when the reference title merely contains live`() {
+        val live = Matcher.score("Alive", "Daft Punk", 300, cand("Alive (Live)", "Daft Punk", 301))
+        val noPenalty = 0.6 * 0.5 + 0.4 - 0.02
+        assertTrue(live.score < noPenalty - 0.2, "${live.score}")
+    }
 }
