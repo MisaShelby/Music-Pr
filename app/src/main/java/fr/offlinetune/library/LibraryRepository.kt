@@ -67,6 +67,18 @@ class LibraryRepository(private val context: Context, private val settings: Sett
     val playlists: StateFlow<List<fr.offlinetune.playlist.Playlist>> = _playlists.asStateFlow()
     private var playlistFiles: List<PlaylistFile> = emptyList()
     val playlistRepo = fr.offlinetune.playlist.PlaylistRepository(context)
+    // --- play statistics (Plus écoutés / Récents / tri par lectures) ---
+    private val statsFile get() = File(context.filesDir, "playstats.json")
+    val stats: PlayStats by lazy { runCatching { PlayStats.fromJson(statsFile.readText()) }.getOrDefault(PlayStats()) }
+    private val _statsVersion = MutableStateFlow(0)
+    val statsVersion: StateFlow<Int> = _statsVersion.asStateFlow()
+
+    /** Called by the playback service when a play is counted. */
+    fun onPlayCounted() {
+        runCatching { statsFile.writeText(stats.toJson()) }
+        _statsVersion.value++
+    }
+
     private val _state = MutableStateFlow<LibState>(LibState.Idle)
     val state: StateFlow<LibState> = _state.asStateFlow()
     private val cacheFile get() = File(context.filesDir, "library.json")

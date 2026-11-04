@@ -28,6 +28,21 @@ class PlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         session = MediaSession.Builder(this, engine.sessionPlayer).setSessionActivity(open).build()
+        // Play counts (Plus écoutés / Récents), checked every second while playing.
+        val library = (application as App).library
+        val counter = fr.offlinetune.library.PlayCounter(library.stats)
+        var lastId: String? = null
+        scope.launch {
+            while (true) {
+                val p = engine.main
+                val id = p.currentMediaItem?.mediaId
+                if (id != lastId) { counter.onItem(id); lastId = id }
+                if (p.isPlaying && counter.onProgress(id, p.currentPosition, p.duration)) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { library.onPlayCounted() }
+                }
+                kotlinx.coroutines.delay(1000)
+            }
+        }
         scope.launch {
             (application as App).settings.flow.collect { s ->
                 engine.settings = s
