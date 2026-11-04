@@ -8,6 +8,7 @@ import java.io.File
 object Id3Writer {
     fun rewrite(mp3In: File, mp3Out: File, info: TrackInfo, cover: ByteArray?, lyrics: String?) {
         val data = mp3In.readBytes()
+        val kept = if (cover == null || lyrics == null) oldFrames(data) else emptyMap()
         var start = 0
         // Skip one or more leading ID3v2 tags.
         while (data.size >= start + 10 && data[start] == 'I'.code.toByte() && data[start + 1] == 'D'.code.toByte() && data[start + 2] == '3'.code.toByte()) {
@@ -26,6 +27,8 @@ object Id3Writer {
         text("TYER", info.year?.toString())
         text("TRCK", info.trackNumber?.toString())
         text("TCON", info.genre)
+        if (cover == null) kept["APIC"]?.let { frames.write(it) }
+        if (lyrics == null) kept["USLT"]?.let { frames.write(it) }
         if (cover != null) {
             val mime = if (cover.size > 3 && cover[0] == 0x89.toByte() && cover[1] == 'P'.code.toByte()) "image/png" else "image/jpeg"
             frames.write(frame("APIC", byteArrayOf(0) + mime.toByteArray() + byteArrayOf(0, 3, 0) + cover))
@@ -54,6 +57,24 @@ object Id3Writer {
             out[id] = if (id.startsWith("T") && content[0].toInt() == 1) {
                 String(content, 1, content.size - 1, Charsets.UTF_16).trimEnd('\u0000')
             } else ""
+            p += 10 + size
+        }
+        return out
+    }
+
+    /** Raw APIC / USLT frames of an existing ID3v2.3 or v2.4 tag (header rewritten as v2.3 sizes). */
+    private fun oldFrames(data: ByteArray): Map<String, ByteArray> {
+        if (data.size < 10 || String(data, 0, 3, Charsets.ISO_8859_1) != "ID3") return emptyMap()
+        val version = data[3].toInt()
+        val end = 10 + synchsafe(data, 6)
+        val out = mutableMapOf<String, ByteArray>()
+        var p = 10
+        while (p + 10 <= end && p + 10 <= data.size && data[p] != 0.toByte()) {
+            val id = String(data, p, 4, Charsets.ISO_8859_1)
+            val size = if (version >= 4) synchsafe(data, p + 4)
+            else ((data[p + 4].toInt() and 0xFF) shl 24) or ((data[p + 5].toInt() and 0xFF) shl 16) or ((data[p + 6].toInt() and 0xFF) shl 8) or (data[p + 7].toInt() and 0xFF)
+            if (size <= 0 || p + 10 + size > data.size) break
+            if (id == "APIC" || id == "USLT") out.putIfAbsent(id, frame(id, data.copyOfRange(p + 10, p + 10 + size)))
             p += 10 + size
         }
         return out

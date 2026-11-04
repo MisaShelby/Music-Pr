@@ -55,6 +55,29 @@ object OggReader {
         return OggInfo(pages, crcOk, preSkip, (lastGranule - preSkip) / 48000.0, comments, pic != null, pic)
     }
 
+    /** OpusHead and the audio packets (everything after OpusTags), reassembled across pages. */
+    fun packets(file: File): Pair<ByteArray, List<ByteArray>> {
+        val data = file.readBytes()
+        val all = mutableListOf<ByteArray>()
+        var current = java.io.ByteArrayOutputStream()
+        var pos = 0
+        while (pos + 27 <= data.size && String(data, pos, 4, Charsets.ISO_8859_1) == "OggS") {
+            val nseg = data[pos + 26].toInt() and 0xFF
+            var off = pos + 27 + nseg
+            for (i in 0 until nseg) {
+                val l = data[pos + 27 + i].toInt() and 0xFF
+                current.write(data, off, l); off += l
+                if (l < 255) { all += current.toByteArray(); current = java.io.ByteArrayOutputStream() }
+            }
+            pos = off
+        }
+        require(all.size >= 2) { "not an Ogg Opus file" }
+        return all[0] to all.drop(2)
+    }
+
+    /** Vorbis comments of an Ogg Opus file (null if unreadable). */
+    fun comments(file: File): Map<String, List<String>>? = runCatching { inspect(file).comments }.getOrNull()
+
     private fun parseTags(p: ByteArray): Map<String, List<String>> {
         val bb = ByteBuffer.wrap(p).order(ByteOrder.LITTLE_ENDIAN)
         bb.position(8)
