@@ -47,13 +47,21 @@ object Covers {
                 context.contentResolver.openInputStream(Uri.parse(key))?.use { it.readBytes() }
             }
         }.getOrNull() ?: return null
+        return fromBytes(key, bytes, size)
+    }
+
+    fun fromBytes(key: String, bytes: ByteArray, size: Int): Bitmap? {
+        val bmp = decode(bytes, size) ?: return null
+        cache.put("$key@$size", bmp)
+        return bmp
+    }
+
+    fun decode(bytes: ByteArray, size: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         var sample = 1
         while (bounds.outWidth / (sample * 2) >= size && bounds.outHeight / (sample * 2) >= size) sample *= 2
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
-        cache.put("$key@$size", bmp)
-        return bmp
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 }
 
@@ -65,6 +73,36 @@ fun rememberCover(key: String?, size: Int = 256): Bitmap? {
         if (key != null && bmp == null) bmp = withContext(Dispatchers.IO) { Covers.load(context, key, size) }
     }
     return bmp
+}
+
+/** Thumbnail from the network (search results). */
+@Composable
+fun RemoteImage(url: String?, shape: Shape, modifier: Modifier = Modifier) {
+    var bmp by remember(url) { mutableStateOf(url?.let { Covers.cached(it, 160) }) }
+    LaunchedEffect(url) {
+        if (url != null && bmp == null) bmp = withContext(Dispatchers.IO) {
+            runCatching { fr.offlinetune.core.net.Http.getBytes(url) }.getOrNull()?.let { Covers.fromBytes(url, it, 160) }
+        }
+    }
+    BitmapBox(bmp, shape, modifier)
+}
+
+/** Image from bytes held in memory (cover of the sheet before download). */
+@Composable
+fun BytesImage(bytes: ByteArray?, shape: Shape, modifier: Modifier = Modifier, size: Int = 600) {
+    val bmp = remember(bytes) { bytes?.let { Covers.decode(it, size) } }
+    BitmapBox(bmp, shape, modifier)
+}
+
+@Composable
+private fun BitmapBox(bmp: Bitmap?, shape: Shape, modifier: Modifier) {
+    Box(modifier.clip(shape).background(Ink.SurfaceHigh), contentAlignment = Alignment.Center) {
+        if (bmp != null) {
+            Image(bmp.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+        } else {
+            Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = Ink.Muted)
+        }
+    }
 }
 
 @Composable
