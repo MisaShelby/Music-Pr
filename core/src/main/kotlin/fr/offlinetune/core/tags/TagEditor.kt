@@ -17,12 +17,16 @@ object TagEditor {
                     val (head, packets) = OggReader.packets(file)
                     val old = OggReader.inspect(file)
                     val keepLyrics = lyrics ?: old.comments["LYRICS"]?.firstOrNull()
-                    val fields = listOf(
+                    val edited = listOf(
                         "TITLE" to info.title, "ARTIST" to info.artist, "ALBUM" to (info.album ?: ""),
                         "ALBUMARTIST" to (info.albumArtist ?: ""), "DATE" to (info.year?.toString() ?: ""),
                         "TRACKNUMBER" to (info.trackNumber?.toString() ?: ""), "GENRE" to (info.genre ?: ""),
                         "LYRICS" to (keepLyrics ?: ""),
                     )
+                    // Every other comment (ReplayGain/R128, disc number, composer, MusicBrainz...) is kept.
+                    val managed = edited.map { it.first }.toSet() + "METADATA_BLOCK_PICTURE"
+                    val others = old.comments.filterKeys { it !in managed }.flatMap { (k, vs) -> vs.map { k to it } }
+                    val fields = edited + others
                     val pic = cover ?: old.pictureBytes
                     val mime = if (pic != null && pic.size > 3 && pic[0] == 0x89.toByte()) "image/png" else "image/jpeg"
                     tmp.outputStream().buffered().use { OggOpusWriter.write(head, packets.asSequence(), VorbisComment(fields = fields, picture = pic, pictureMime = mime), it) }

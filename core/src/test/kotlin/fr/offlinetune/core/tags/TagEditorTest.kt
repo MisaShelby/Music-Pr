@@ -54,6 +54,60 @@ class TagEditorTest {
         assertTrue("APIC" in frames && "USLT" in frames, frames.keys.toString())
     }
 
+    private fun opusFile(name: String, title: String = "x", n: Int = 10) = File(tmp, name).apply {
+        outputStream().use { OggOpusWriter.write(TestWebm.opusHead(), TestWebm.packets(n).asSequence(), VorbisComment(fields = listOf("TITLE" to title)), it) }
+    }
+
+    @Test fun `vorbis ogg is refused and left untouched`() {
+        val f = opusFile("v.ogg")
+        val bytes = f.readBytes()
+        // Turn it into a "Vorbis" stream: first packet no longer starts with OpusHead.
+        val i = String(bytes, Charsets.ISO_8859_1).indexOf("OpusHead")
+        "\u0001vorbis\u0000".toByteArray(Charsets.ISO_8859_1).copyInto(bytes, i)
+        f.writeBytes(bytes)
+        assertThrows<Unsupported> { TagEditor.write(f, TrackInfo("t", "a"), null, null) }
+        assertArrayEquals(bytes, f.readBytes())
+    }
+
+    @Test fun `chained or multi-stream ogg is refused`() {
+        val f = File(tmp, "c.opus").apply { writeBytes(opusFile("p1.opus").readBytes() + opusFile("p2.opus").readBytes()) }
+        val before = f.readBytes()
+        assertThrows<Unsupported> { TagEditor.write(f, TrackInfo("t", "a"), null, null) }
+        assertArrayEquals(before, f.readBytes())
+    }
+
+    @Test fun `truncated ogg is refused`() {
+        val good = opusFile("t.opus", n = 200).readBytes()
+        val f = File(tmp, "t2.opus").apply { writeBytes(good.copyOf(good.size - 37) + "garbage".toByteArray()) }
+        assertThrows<Unsupported> { TagEditor.write(f, TrackInfo("t", "a"), null, null) }
+    }
+
+    @Test fun `other opus tags are kept, edited ones replaced`() {
+        val f = File(tmp, "k.opus").apply {
+            outputStream().use {
+                OggOpusWriter.write(TestWebm.opusHead(), TestWebm.packets(10).asSequence(),
+                    VorbisComment(fields = listOf("TITLE" to "old", "R128_TRACK_GAIN" to "-512", "DISCNUMBER" to "2", "COMPOSER" to "X")), it)
+            }
+        }
+        TagEditor.write(f, TrackInfo("new", "A"), null, null)
+        val c = OggReader.inspect(f).comments
+        assertEquals(listOf("new"), c["TITLE"])
+        assertEquals(listOf("-512"), c["R128_TRACK_GAIN"])
+        assertEquals(listOf("2"), c["DISCNUMBER"])
+        assertEquals(listOf("X"), c["COMPOSER"])
+    }
+
+    @Test fun `other mp3 frames are kept`() {
+        val mp3 = File(tmp, "o.mp3").apply { writeBytes(ByteArray(400) { intArrayOf(0xFF, 0xFB, 0x90, 0x64)[it % 4].toByte() }) }
+        val tagged = File(tmp, "o2.mp3")
+        Id3Writer.rewrite(mp3, tagged, TrackInfo("A", "B"), null, null, extraFrames = listOf("TPOS" to "2", "TCOM" to "Composer"))
+        TagEditor.write(tagged, TrackInfo("C", "B"), null, null)
+        val b = tagged.readBytes()
+        val size = ((b[6].toInt() and 0x7F) shl 21) or ((b[7].toInt() and 0x7F) shl 14) or ((b[8].toInt() and 0x7F) shl 7) or (b[9].toInt() and 0x7F)
+        val frames = Id3Writer.parseFrames(b.copyOfRange(10, 10 + size))
+        assertEquals("C", frames["TIT2"]); assertEquals("2", frames["TPOS"]); assertEquals("Composer", frames["TCOM"])
+    }
+
     @Test fun `flac is not editable`() {
         val f = File(tmp, "c.flac").apply { writeBytes(ByteArray(10)) }
         assertThrows<Unsupported> { TagEditor.write(f, TrackInfo("t", "a"), null, null) }

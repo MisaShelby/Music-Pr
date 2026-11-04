@@ -55,23 +55,40 @@ object OggReader {
         return OggInfo(pages, crcOk, preSkip, (lastGranule - preSkip) / 48000.0, comments, pic != null, pic)
     }
 
-    /** OpusHead and the audio packets (everything after OpusTags), reassembled across pages. */
+    /**
+     * OpusHead and the audio packets (everything after OpusTags), reassembled across pages. Refuses (Unsupported)
+     * anything that would not survive a rewrite: non-Opus streams (Vorbis...), several logical streams or chained
+     * files, and damaged files.
+     */
     fun packets(file: File): Pair<ByteArray, List<ByteArray>> {
         val data = file.readBytes()
+        val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
         val all = mutableListOf<ByteArray>()
         var current = java.io.ByteArrayOutputStream()
         var pos = 0
-        while (pos + 27 <= data.size && String(data, pos, 4, Charsets.ISO_8859_1) == "OggS") {
+        var serial: Int? = null
+        fun damaged(): Nothing = throw fr.offlinetune.core.model.Unsupported("ce fichier Ogg endommagé")
+        while (pos < data.size) {
+            if (pos + 27 > data.size || String(data, pos, 4, Charsets.ISO_8859_1) != "OggS") damaged()
+            val type = data[pos + 5].toInt()
+            val s = bb.getInt(pos + 14)
+            if (serial == null) serial = s
+            else if (s != serial || type and 2 != 0) throw fr.offlinetune.core.model.Unsupported("les fichiers Ogg à plusieurs flux")
             val nseg = data[pos + 26].toInt() and 0xFF
+            if (pos + 27 + nseg > data.size) damaged()
             var off = pos + 27 + nseg
             for (i in 0 until nseg) {
                 val l = data[pos + 27 + i].toInt() and 0xFF
+                if (off + l > data.size) damaged()
                 current.write(data, off, l); off += l
                 if (l < 255) { all += current.toByteArray(); current = java.io.ByteArrayOutputStream() }
             }
             pos = off
         }
-        require(all.size >= 2) { "not an Ogg Opus file" }
+        fun starts(p: ByteArray?, magic: String) = p != null && p.size >= 8 && String(p, 0, 8, Charsets.ISO_8859_1) == magic
+        if (!starts(all.getOrNull(0), "OpusHead") || !starts(all.getOrNull(1), "OpusTags")) {
+            throw fr.offlinetune.core.model.Unsupported("la modification des fichiers Ogg qui ne sont pas en Opus")
+        }
         return all[0] to all.drop(2)
     }
 

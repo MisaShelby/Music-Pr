@@ -41,12 +41,19 @@ object Mp4Tags {
         val moov = top.firstOrNull { it.type == "moov" } ?: throw IllegalArgumentException("no moov box")
         val firstMdat = top.firstOrNull { it.type == "mdat" }
 
-        val kept = children(data, moov.bodyStart, moov.end).filter { it.type != "udta" }
+        val moovKids = children(data, moov.bodyStart, moov.end)
+        // A malformed box would make us drop the rest of moov (tracks!): refuse instead.
+        if ((moovKids.lastOrNull()?.end ?: moov.bodyStart) != moov.end) throw IllegalArgumentException("malformed moov")
+        val kept = moovKids.filter { it.type != "udta" }
         val body = ByteArrayOutputStream()
         kept.forEach { body.write(data, it.start, it.size) }
-        // Keep the existing cover / lyrics items when none are given.
+        // Keep every existing item we don't rewrite (cover/lyrics only when none are given), and other udta children.
         val oldItems = oldIlstItems(data, moov)
-        body.write(udta(info, cover, lyrics, keep = listOfNotNull(if (cover == null) oldItems["covr"] else null, if (lyrics == null) oldItems["©lyr"] else null)))
+        val rewritten = setOf("©nam", "©ART", "©alb", "aART", "©day", "©gen", "trkn", "©too") +
+            (if (cover != null) setOf("covr") else emptySet()) + (if (lyrics != null) setOf("©lyr") else emptySet())
+        val oldUdta = moovKids.firstOrNull { it.type == "udta" }
+        val otherUdta = oldUdta?.let { u -> children(data, u.bodyStart, u.end).filter { it.type != "meta" }.map { data.copyOfRange(it.start, it.end) } } ?: emptyList()
+        body.write(udta(info, cover, lyrics, keep = oldItems.filterKeys { it !in rewritten }.values.toList(), otherUdta = otherUdta))
         val newMoov = box("moov", body.toByteArray())
 
         val delta = newMoov.size - moov.size
@@ -84,7 +91,7 @@ object Mp4Tags {
         return children(data, ilst.bodyStart, ilst.end).associate { it.type to data.copyOfRange(it.start, it.end) }
     }
 
-    private fun udta(info: TrackInfo, cover: ByteArray?, lyrics: String?, keep: List<ByteArray> = emptyList()): ByteArray {
+    private fun udta(info: TrackInfo, cover: ByteArray?, lyrics: String?, keep: List<ByteArray> = emptyList(), otherUdta: List<ByteArray> = emptyList()): ByteArray {
         val items = ByteArrayOutputStream()
         keep.forEach { items.write(it) }
         fun text(name: String, v: String?) { if (!v.isNullOrBlank()) items.write(item(name, 1, v.toByteArray(Charsets.UTF_8))) }
@@ -103,7 +110,7 @@ object Mp4Tags {
         text("©too", "OfflineTune")
         val hdlr = box("hdlr", ByteArray(8) + "mdirappl".toByteArray(L1) + ByteArray(9))
         val meta = box("meta", ByteArray(4) + hdlr + box("ilst", items.toByteArray()))
-        return box("udta", meta)
+        return box("udta", otherUdta.fold(ByteArray(0)) { a, b -> a + b } + meta)
     }
 
     private fun item(name: String, type: Int, payload: ByteArray) =

@@ -6,9 +6,13 @@ import java.io.File
 
 /** Replaces any ID3 tags of an MP3 with a fresh ID3v2.3 tag (UTF-16 text, front cover, unsynced lyrics). */
 object Id3Writer {
-    fun rewrite(mp3In: File, mp3Out: File, info: TrackInfo, cover: ByteArray?, lyrics: String?) {
+    /** Frames this writer manages; every other frame of an existing tag is kept as it was. */
+    private val MANAGED = setOf("TIT2", "TPE1", "TALB", "TPE2", "TYER", "TDRC", "TRCK", "TCON", "APIC", "USLT")
+
+    fun rewrite(mp3In: File, mp3Out: File, info: TrackInfo, cover: ByteArray?, lyrics: String?, extraFrames: List<Pair<String, String>> = emptyList()) {
         val data = mp3In.readBytes()
-        val kept = if (cover == null || lyrics == null) oldFrames(data) else emptyMap()
+        val old = oldFrames(data)
+        val kept = old.filter { it.first == "APIC" || it.first == "USLT" }.toMap()
         var start = 0
         // Skip one or more leading ID3v2 tags.
         while (data.size >= start + 10 && data[start] == 'I'.code.toByte() && data[start + 1] == 'D'.code.toByte() && data[start + 2] == '3'.code.toByte()) {
@@ -19,6 +23,9 @@ object Id3Writer {
         if (end - start >= 128 && String(data, end - 128, 3, Charsets.ISO_8859_1) == "TAG") end -= 128
 
         val frames = ByteArrayOutputStream()
+        // Unmanaged frames (disc number, composer, ReplayGain, comments...) are carried over unchanged.
+        old.filter { it.first !in MANAGED }.forEach { frames.write(it.second) }
+        extraFrames.forEach { (id, v) -> frames.write(frame(id, byteArrayOf(1) + utf16(v))) }
         fun text(id: String, value: String?) { if (!value.isNullOrBlank()) frames.write(frame(id, byteArrayOf(1) + utf16(value))) }
         text("TIT2", info.title)
         text("TPE1", info.artist)
@@ -62,23 +69,36 @@ object Id3Writer {
         return out
     }
 
-    /** Raw APIC / USLT frames of an existing ID3v2.3 or v2.4 tag (header rewritten as v2.3 sizes). */
-    private fun oldFrames(data: ByteArray): Map<String, ByteArray> {
-        if (data.size < 10 || String(data, 0, 3, Charsets.ISO_8859_1) != "ID3") return emptyMap()
+    /**
+     * Frames of an existing ID3v2.3/2.4 tag, re-encoded as v2.3 frames. Anything that cannot be copied safely is
+     * dropped rather than corrupted: tags with unsynchronisation, v2.4 frames with format flags, UTF-8 text.
+     */
+    private fun oldFrames(data: ByteArray): List<Pair<String, ByteArray>> {
+        if (data.size < 10 || String(data, 0, 3, Charsets.ISO_8859_1) != "ID3") return emptyList()
         val version = data[3].toInt()
-        val end = 10 + synchsafe(data, 6)
-        val out = mutableMapOf<String, ByteArray>()
+        val flags = data[5].toInt()
+        if (version !in 3..4 || flags and 0x80 != 0) return emptyList()
+        val end = minOf(10 + synchsafe(data, 6), data.size)
         var p = 10
-        while (p + 10 <= end && p + 10 <= data.size && data[p] != 0.toByte()) {
+        if (flags and 0x40 != 0 && p + 4 <= end) {
+            p += if (version == 4) synchsafe(data, p) else 4 + be32(data, p)
+        }
+        val out = mutableListOf<Pair<String, ByteArray>>()
+        while (p + 10 <= end && data[p] != 0.toByte()) {
             val id = String(data, p, 4, Charsets.ISO_8859_1)
-            val size = if (version >= 4) synchsafe(data, p + 4)
-            else ((data[p + 4].toInt() and 0xFF) shl 24) or ((data[p + 5].toInt() and 0xFF) shl 16) or ((data[p + 6].toInt() and 0xFF) shl 8) or (data[p + 7].toInt() and 0xFF)
-            if (size <= 0 || p + 10 + size > data.size) break
-            if (id == "APIC" || id == "USLT") out.putIfAbsent(id, frame(id, data.copyOfRange(p + 10, p + 10 + size)))
+            val size = if (version == 4) synchsafe(data, p + 4) else be32(data, p + 4)
+            if (size <= 0 || p + 10 + size > end) break
+            val content = data.copyOfRange(p + 10, p + 10 + size)
+            val formatFlags = data[p + 9].toInt()
+            val utf8 = (id.startsWith("T") || id == "USLT" || id == "COMM" || id == "APIC") && content.isNotEmpty() && content[0].toInt() >= 2
+            if (!(version == 4 && formatFlags != 0) && !utf8) out += id to frame(id, content)
             p += 10 + size
         }
         return out
     }
+
+    private fun be32(b: ByteArray, o: Int) =
+        ((b[o].toInt() and 0xFF) shl 24) or ((b[o + 1].toInt() and 0xFF) shl 16) or ((b[o + 2].toInt() and 0xFF) shl 8) or (b[o + 3].toInt() and 0xFF)
 
     private fun utf16(s: String): ByteArray = s.toByteArray(Charsets.UTF_16) + byteArrayOf(0, 0) // BOM + text + terminator
 
