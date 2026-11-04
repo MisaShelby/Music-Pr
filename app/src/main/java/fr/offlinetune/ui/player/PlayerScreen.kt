@@ -32,6 +32,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Check
@@ -208,12 +210,12 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
             when (viz) {
                 VizMode.TRANSPARENT -> {
                     // The song's waveform behind see-through controls; tap or slide on it to move in the song.
-                    Box(Modifier.fillMaxWidth().height(176.dp).padding(top = 8.dp)) {
+                    Box(Modifier.fillMaxWidth().height(200.dp).padding(top = 10.dp)) {
                         Box(Modifier.fillMaxSize().seekGestures(onDrag, onRelease)) {
-                            WaveformView(waveform, progress, Modifier.fillMaxSize().padding(bottom = 22.dp), strength = 0.9f)
+                            WaveformView(waveform, progress, Modifier.fillMaxSize().padding(bottom = 6.dp))
                             TimeCorners(elapsed, total, dragging != null)
                         }
-                        Box(Modifier.fillMaxSize().padding(bottom = 22.dp), contentAlignment = Alignment.Center) { transport() }
+                        Box(Modifier.fillMaxSize().padding(bottom = 14.dp), contentAlignment = Alignment.Center) { transport() }
                     }
                 }
                 VizMode.FULL -> Box(Modifier.fillMaxWidth().padding(vertical = 14.dp)) { transport() }
@@ -349,9 +351,14 @@ private fun BarButton(icon: ImageVector, label: String, active: Boolean = false,
 /** Elapsed time bottom-left, total bottom-right; the elapsed one turns bold while seeking. */
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.TimeCorners(elapsed: String, total: String, seeking: Boolean) {
-    Text(elapsed, style = MaterialTheme.typography.labelLarge, fontWeight = if (seeking) FontWeight.Bold else FontWeight.Normal,
-        color = if (seeking) Color.White else Ink.Muted, modifier = Modifier.align(Alignment.BottomStart))
-    Text(total, style = MaterialTheme.typography.labelLarge, color = Ink.Muted, modifier = Modifier.align(Alignment.BottomEnd))
+    TimeBadge(elapsed, seeking, Modifier.align(Alignment.BottomStart))
+    TimeBadge(total, false, Modifier.align(Alignment.BottomEnd))
+}
+
+@Composable
+private fun TimeBadge(text: String, bold: Boolean, modifier: Modifier) {
+    Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = if (bold) FontWeight.Black else FontWeight.Bold, color = Color.White,
+        modifier = modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.85f)).padding(horizontal = 9.dp, vertical = 3.dp))
 }
 
 /** Translucent round button (the waveform shows through it). */
@@ -359,22 +366,22 @@ private fun androidx.compose.foundation.layout.BoxScope.TimeCorners(elapsed: Str
 private fun RoundButton(icon: ImageVector, label: String, size: androidx.compose.ui.unit.Dp, active: Boolean = false, filled: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier.size(size).clip(CircleShape)
-            .background(if (filled) Color.White.copy(alpha = 0.92f) else Color.White.copy(alpha = if (active) 0.22f else 0.10f))
+            .background(if (filled) Color.Black else Color.White.copy(alpha = if (active) 0.22f else 0.12f))
             .clickable(onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, label, Modifier.size(size * 0.5f),
-            tint = when { filled -> Ink.Background; active -> MaterialTheme.colorScheme.primary; else -> Color.White })
+            tint = when { filled -> Color.White; active -> MaterialTheme.colorScheme.primary; else -> Color.White })
     }
 }
 
 @Composable
 private fun TransportRow(playing: Boolean, onPrev: () -> Unit, onBack: () -> Unit, onPlay: () -> Unit, onFwd: () -> Unit, onNext: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        RoundButton(Icons.Rounded.SkipPrevious, "Précédent", 50.dp, onClick = onPrev)
-        RoundButton(Icons.Rounded.Replay10, "Reculer de 10 s", 50.dp, onClick = onBack)
-        RoundButton(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Lecture", 76.dp, filled = true, onClick = onPlay)
-        RoundButton(Icons.Rounded.Forward10, "Avancer de 10 s", 50.dp, onClick = onFwd)
-        RoundButton(Icons.Rounded.SkipNext, "Suivant", 50.dp, onClick = onNext)
+        RoundButton(Icons.Rounded.SkipPrevious, "Précédent", 48.dp, onClick = onPrev)
+        RoundButton(Icons.Rounded.FastRewind, "Reculer de 10 s", 66.dp, filled = true, onClick = onBack)
+        RoundButton(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Lecture", 94.dp, filled = true, onClick = onPlay)
+        RoundButton(Icons.Rounded.FastForward, "Avancer de 10 s", 66.dp, filled = true, onClick = onFwd)
+        RoundButton(Icons.Rounded.SkipNext, "Suivant", 48.dp, onClick = onNext)
     }
 }

@@ -45,7 +45,7 @@ enum class VizMode(val label: String) {
     }
 }
 
-const val WAVE_BARS = 110
+const val WAVE_BARS = 46
 
 /** Static waveform of the whole track, computed once per song in the background (cached by the analyzer). */
 @Composable
@@ -82,15 +82,19 @@ fun WaveformView(bars: FloatArray?, progress: Float, modifier: Modifier = Modifi
     val accent = MaterialTheme.colorScheme.primary
     Canvas(modifier) {
         val n = bars?.size ?: WAVE_BARS
-        val gap = 2.5.dp.toPx()
-        val w = ((size.width - gap * (n - 1)) / n).coerceAtLeast(1f)
+        // Thick bars with a gap a bit narrower than a bar, like a printed waveform.
+        val w = (size.width / (n * 1.55f - 0.55f)).coerceAtLeast(1f)
+        val gap = w * 0.55f
+        // Stretch the song's own loudness range so quiet and loud parts stand apart.
+        val lo = bars?.minOrNull() ?: 0f
+        val span = ((bars?.maxOrNull() ?: 1f) - lo).coerceAtLeast(0.05f)
         val mid = size.height / 2
         val playedTop = Color.White.copy(alpha = 0.95f * strength)
         val playedBottom = lerpColor(accent, Color.White, 0.35f).copy(alpha = 0.95f * strength)
-        val rest = Color.White.copy(alpha = 0.20f * strength)
+        val rest = Color.White.copy(alpha = 0.38f * strength)
         for (i in 0 until n) {
-            val v = bars?.get(i) ?: 0.05f
-            val h = ((0.05f + 0.95f * v) * size.height * 0.96f).coerceAtLeast(w)
+            val v = bars?.let { ((it[i] - lo) / span).coerceIn(0f, 1f) } ?: 0f
+            val h = ((0.42f + 0.58f * v) * size.height).coerceAtLeast(w)
             val x = i * (w + gap)
             val top = mid - h / 2
             val played = (i + 0.5f) / n <= progress
