@@ -153,6 +153,7 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                 }
                 Text("-" + formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0)).ifEmpty { "0:00" }, style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
             }
+            SpeedRow(state.speed) { app.player.setSpeed(it) }
 
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 14.dp),
@@ -194,7 +195,10 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
 
     if (showQueue) {
         ModalBottomSheet(onDismissRequest = { showQueue = false }, containerColor = Ink.Surface) {
-            Text("File d'attente", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 20.dp))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("File d'attente", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = { app.player.clearQueue() }, enabled = state.queue.size > 1) { Text("Vider la file") }
+            }
             LazyColumn(Modifier.fillMaxWidth().height(480.dp)) {
                 itemsIndexed(state.queue) { i, q ->
                     Row(
@@ -216,6 +220,27 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
         AddToPlaylistSheet(app, listOf(current)) { msg ->
             addToList = false
             msg?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+        }
+    }
+}
+
+private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+/** Playback speed: ×0.5 … ×2. */
+@Composable
+private fun SpeedRow(current: Float, onSpeed: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.Center) {
+        SPEEDS.forEach { sp ->
+            val on = kotlin.math.abs(sp - current) < 0.01f
+            Text(
+                "×" + (if (sp % 1f == 0f) sp.toInt().toString() else sp.toString().replace('.', ',')),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (on) Ink.Background else Ink.Muted,
+                fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 3.dp)
+                    .background(if (on) Color.White else Color.Transparent, RoundedCornerShape(50))
+                    .clickable { onSpeed(sp) }.padding(horizontal = 8.dp, vertical = 3.dp),
+            )
         }
     }
 }

@@ -34,6 +34,7 @@ data class PlayerUiState(
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val queue: List<QueueEntry> = emptyList(),
     val index: Int = -1,
+    val speed: Float = 1f,
 )
 
 /** Track to play: built by the library (Task 16). */
@@ -95,6 +96,7 @@ class PlayerConnection(private val context: Context) {
                 QueueEntry(it.mediaId, it.mediaMetadata.title?.toString() ?: "", it.mediaMetadata.artist?.toString() ?: "")
             },
             index = c.currentMediaItemIndex,
+            speed = c.playbackParameters.speed,
         )
     }
 
@@ -105,6 +107,30 @@ class PlayerConnection(private val context: Context) {
     }
 
     fun addToQueue(track: PlayableTrack) = withController { it.addMediaItem(track.toMediaItem()) }
+
+    /** « Lire après »: right after the current track. Starts playback when nothing is queued. */
+    fun playNext(tracks: List<PlayableTrack>) = withController { c ->
+        if (tracks.isEmpty()) return@withController
+        if (c.mediaItemCount == 0) { playList(tracks, 0); return@withController }
+        c.addMediaItems(c.currentMediaItemIndex + 1, tracks.map { it.toMediaItem() })
+    }
+
+    /** « Ajouter à la fin » de la file d'attente. */
+    fun addToEnd(tracks: List<PlayableTrack>) = withController { c ->
+        if (tracks.isEmpty()) return@withController
+        if (c.mediaItemCount == 0) { playList(tracks, 0); return@withController }
+        c.addMediaItems(tracks.map { it.toMediaItem() })
+    }
+
+    /** « Vider la file »: keeps only the current track. */
+    fun clearQueue() = withController { c ->
+        val i = c.currentMediaItemIndex
+        if (i < 0) { c.clearMediaItems(); return@withController }
+        if (i + 1 < c.mediaItemCount) c.removeMediaItems(i + 1, c.mediaItemCount)
+        if (i > 0) c.removeMediaItems(0, i)
+    }
+
+    fun setSpeed(speed: Float) = withController { it.setPlaybackSpeed(speed) }
     fun togglePlay() = withController { if (it.isPlaying) it.pause() else { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } }
     fun next() = withController { it.seekToNext() }
     fun previous() = withController { it.seekToPrevious() }
