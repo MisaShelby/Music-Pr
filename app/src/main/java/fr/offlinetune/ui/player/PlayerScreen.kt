@@ -6,6 +6,10 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +61,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -136,11 +142,12 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
 
             var dragging by remember { mutableStateOf<Float?>(null) }
             val dur = state.durationMs.coerceAtLeast(1)
-            Slider(
-                value = dragging ?: (state.positionMs.toFloat() / dur).coerceIn(0f, 1f),
-                onValueChange = { dragging = it },
-                onValueChangeFinished = { dragging?.let { app.player.seekTo((it * dur).toLong()) }; dragging = null },
-                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.25f)),
+            TimeBar(
+                progress = dragging ?: (state.positionMs.toFloat() / dur).coerceIn(0f, 1f),
+                dragging = dragging != null,
+                label = dragging?.let { formatDuration((it * dur).toLong()).ifEmpty { "0:00" } },
+                onDrag = { dragging = it },
+                onRelease = { dragging?.let { app.player.seekTo((it * dur).toLong()) }; dragging = null },
             )
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(formatDuration(dragging?.let { (it * dur).toLong() } ?: state.positionMs).ifEmpty { "0:00" }, style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
@@ -220,6 +227,47 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
         AddToPlaylistSheet(app, listOf(current)) { msg ->
             addToList = false
             msg?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+        }
+    }
+}
+
+/**
+ * Timeline: thick rounded bar that grows while dragging (time shown above the finger); tap or drag anywhere to seek.
+ */
+@Composable
+private fun TimeBar(progress: Float, dragging: Boolean, label: String?, onDrag: (Float) -> Unit, onRelease: () -> Unit) {
+    val h by androidx.compose.animation.core.animateDpAsState(if (dragging) 14.dp else 6.dp, label = "bar")
+    val accent = MaterialTheme.colorScheme.primary
+    Box(
+        Modifier.fillMaxWidth().height(44.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(onPress = { o ->
+                    onDrag((o.x / size.width).coerceIn(0f, 1f))
+                    tryAwaitRelease(); onRelease()
+                })
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { o -> onDrag((o.x / size.width).coerceIn(0f, 1f)) },
+                    onDragEnd = onRelease, onDragCancel = onRelease,
+                ) { change, _ -> change.consume(); onDrag((change.position.x / size.width).coerceIn(0f, 1f)) }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(Modifier.fillMaxWidth().height(h).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.22f))) {
+            Box(
+                Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(h).clip(RoundedCornerShape(50))
+                    .background(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.85f), Color.White))),
+            )
+        }
+        if (label != null) {
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val x = (maxWidth * progress - 28.dp).coerceIn(0.dp, maxWidth - 56.dp)
+                GlassSurface(Modifier.padding(start = x).width(56.dp).offset(y = (-26).dp), RoundedCornerShape(50), strong = true) {
+                    Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            }
         }
     }
 }
