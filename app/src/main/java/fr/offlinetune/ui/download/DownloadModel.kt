@@ -88,7 +88,16 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
 
     fun edit(change: (TrackInfo) -> TrackInfo) = updateEdit { it.copy(edited = change(it.edited)) }
     fun setIncludeLyrics(v: Boolean) = updateEdit { it.copy(includeLyrics = v) }
-    fun setCover(bytes: ByteArray) = updateEdit { it.copy(sheet = it.sheet.copy(coverBytes = bytes)) }
+    /** Gallery image: read and downscaled off the main thread (cloud photos may need a download). */
+    fun setCoverFrom(context: android.content.Context, uri: android.net.Uri) {
+        scope.launch {
+            val bytes = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let(DownloadQueue::toSquareJpeg) }.getOrNull()
+            }
+            if (bytes != null) updateEdit { it.copy(sheet = it.sheet.copy(coverBytes = bytes)) }
+            else updateEdit { it.copy(error = "Impossible de lire cette image.") }
+        }
+    }
 
     fun changeSource(url: String) = sheetJob("Vérification de la source…") { e ->
         val r = service.withSource(e.sheet, url)

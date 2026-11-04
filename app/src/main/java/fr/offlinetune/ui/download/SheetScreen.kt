@@ -61,7 +61,7 @@ fun SheetScreen(padding: PaddingValues, edit: SheetEdit, model: DownloadModel, o
     val info = edit.edited
     var choosingSource by remember { mutableStateOf(false) }
     val pickCover = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) context.contentResolver.openInputStream(uri)?.use { model.setCover(it.readBytes()) }
+        if (uri != null) model.setCoverFrom(context.applicationContext, uri)
     }
 
     Column(Modifier.fillMaxSize().padding(padding)) {

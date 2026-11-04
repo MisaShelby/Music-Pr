@@ -115,19 +115,33 @@ class DownloadQueue(
     }
 
     companion object {
-        /** Players expect a square cover.jpg: crop wide video thumbnails to the centre and re-encode non-JPEG images. */
+        private const val MAX_COVER_PX = 1400
+
+        /**
+         * Players expect a square cover.jpg of reasonable size: crop wide video thumbnails to the centre,
+         * downscale big photos (≤ 1400 px) and re-encode anything that is not already a small JPEG.
+         */
         fun toSquareJpeg(bytes: ByteArray): ByteArray {
             val isJpeg = bytes.size > 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            val wide = bounds.outHeight > 0 && bounds.outWidth.toFloat() / bounds.outHeight > 1.2f
-            if (isJpeg && !wide) return bytes
-            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
-            val out = if (wide) {
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return bytes
+            val wide = bounds.outWidth.toFloat() / bounds.outHeight > 1.2f
+            val big = maxOf(bounds.outWidth, bounds.outHeight) > MAX_COVER_PX
+            if (isJpeg && !wide && !big) return bytes
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_COVER_PX) sample *= 2
+            var bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return bytes
+            if (wide) {
                 val side = bmp.height
-                Bitmap.createBitmap(bmp, (bmp.width - side) / 2, 0, side, side)
-            } else bmp
-            return ByteArrayOutputStream().also { out.compress(Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
+                bmp = Bitmap.createBitmap(bmp, (bmp.width - side) / 2, 0, side, side)
+            }
+            val longest = maxOf(bmp.width, bmp.height)
+            if (longest > MAX_COVER_PX) {
+                val f = MAX_COVER_PX.toFloat() / longest
+                bmp = Bitmap.createScaledBitmap(bmp, (bmp.width * f).toInt(), (bmp.height * f).toInt(), true)
+            }
+            return ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
         }
     }
 }
