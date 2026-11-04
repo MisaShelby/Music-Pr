@@ -35,6 +35,20 @@ class FederatedSearchTest {
         assertEquals(1, o.songs.size)
     }
 
+    @Test fun `a provider stuck in blocking network io does not hold the others`() = runBlocking {
+        okhttp3.mockwebserver.MockWebServer().use { s ->
+            s.enqueue(okhttp3.mockwebserver.MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.NO_RESPONSE))
+            val start = System.currentTimeMillis()
+            val o = FederatedSearch(listOf(
+                Fake(Provider.DEEZER) { listOf(hit(Provider.DEEZER, "A")) },
+                Fake(Provider.TIDAL) { fr.offlinetune.core.net.Http.getText(s.url("/hang").toString()); emptyList() },
+            ), timeoutMs = 300).search("q")
+            assertTrue(System.currentTimeMillis() - start < 2000, "${System.currentTimeMillis() - start} ms")
+            assertEquals(ProviderStatus.Failed("délai dépassé"), o.status[Provider.TIDAL])
+            assertEquals(1, o.songs.size)
+        }
+    }
+
     @Test fun `missing key is reported as NeedsKey`() = runBlocking {
         val o = FederatedSearch(listOf(Fake(Provider.SPOTIFY) { throw NeedsKey("Spotify") })).search("q")
         assertEquals(ProviderStatus.NeedsKey, o.status[Provider.SPOTIFY])

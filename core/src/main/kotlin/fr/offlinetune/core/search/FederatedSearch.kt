@@ -11,23 +11,32 @@ import fr.offlinetune.core.search.providers.SpotifyProvider
 import fr.offlinetune.core.search.providers.TidalProvider
 import fr.offlinetune.core.search.providers.YouTubeMusicProvider
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class SearchOutcome(val songs: List<SongResult>, val status: Map<Provider, ProviderStatus>)
 
 /** Queries every platform in parallel; a slow or failing platform never blocks the others. */
 class FederatedSearch(private val providers: List<SearchProvider>, private val timeoutMs: Long = 8000) {
+    private val detached = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private class TimedOut : Exception()
 
     suspend fun search(query: String, limit: Int = 15): SearchOutcome = supervisorScope {
         val results = providers.map { p ->
             async {
                 p.provider to try {
-                    withTimeout(timeoutMs) { p.search(query, limit) } to ProviderStatus.Ok
-                } catch (e: TimeoutCancellationException) {
+                    // Detached task: a provider stuck in blocking network I/O is abandoned at the deadline
+                    // instead of holding the whole search until its sockets time out.
+                    val task = detached.async { p.search(query, limit) }
+                    val hits = withTimeoutOrNull(timeoutMs) { task.await() }
+                    if (hits == null) { task.cancel(); throw TimedOut() }
+                    hits to ProviderStatus.Ok
+                } catch (e: TimedOut) {
                     emptyList<ProviderHit>() to ProviderStatus.Failed("délai dépassé")
                 } catch (e: CancellationException) {
                     throw e
