@@ -80,11 +80,18 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
     LaunchedEffect(sharedText) {
         if (sharedText != null) { model.submit(sharedText); onSharedConsumed() }
     }
-    BackHandler(enabled = phase is DlPhase.Editing || phase is DlPhase.Sources || phase is DlPhase.Federated || phase is DlPhase.Error) { model.back() }
+    BackHandler(enabled = phase is DlPhase.Editing || phase is DlPhase.Sources || phase is DlPhase.Federated || phase is DlPhase.Error || phase is DlPhase.SongList) { model.back() }
+    val tracks by app.library.tracks.collectAsState()
+    val forYou by model.forYou.collectAsState()
+    LaunchedEffect(tracks.size) { if (tracks.isNotEmpty()) model.loadForYou(tracks) }
 
     val current = phase
     if (current is DlPhase.Editing) {
         SheetScreen(padding, current.edit, model, onBack = { model.back() })
+        return
+    }
+    if (current is DlPhase.SongList) {
+        SongListScreen(padding, current.title, current.subtitle, current.songs, onBack = { model.back() }, onSong = { model.openAnySong(it) })
         return
     }
     if (current is DlPhase.Sources) {
@@ -133,12 +140,8 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
                 Text(current.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(20.dp))
             }
             is DlPhase.Federated -> item { SearchResults(current.outcome, current.filter, { model.setFilter(it) }, { model.openSong(it) }) }
-            else -> if (downloads.isEmpty()) item {
-                Text(
-                    "Collez un lien Spotify, Deezer, YouTube, YouTube Music ou SoundCloud, ou partagez-le depuis l'app d'origine. " +
-                        "Vous pouvez aussi taper « artiste titre ».",
-                    color = Ink.Muted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(20.dp),
-                )
+            else -> item {
+                ForYouHome(forYou, onSong = { model.openAnySong(it) }, onAlbum = { model.openAlbum(it) }, onPlaylist = { model.openSpotifyPlaylist(it) })
             }
         }
 

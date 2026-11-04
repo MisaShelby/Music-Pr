@@ -55,7 +55,7 @@ fun SearchResults(outcome: SearchOutcome, filter: Provider?, onFilter: (Provider
         if (songs.isEmpty()) {
             Text("Aucun résultat sur cette plateforme.", color = Ink.Muted, modifier = Modifier.padding(20.dp))
         }
-        songs.forEach { song -> SongRow(song) { onOpen(song) } }
+        songs.forEach { song -> SongRow(song, filter) { onOpen(song) } }
         Text(
             "Les pastilles indiquent les plateformes où la chanson existe.",
             style = MaterialTheme.typography.labelMedium, color = Ink.Muted,
@@ -65,7 +65,7 @@ fun SearchResults(outcome: SearchOutcome, filter: Provider?, onFilter: (Provider
 }
 
 @Composable
-private fun SongRow(song: SongResult, onClick: () -> Unit) {
+fun SongRow(song: SongResult, filter: Provider?, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -81,5 +81,6 @@ private fun SongRow(song: SongResult, onClick: () -> Unit) {
                 Provider.entries.filter { it in song.hits }.forEach { PlatformBadge(it, 18.dp) }
             }
         }
+        CopyLinkButton(bestLink(song, filter))
     }
 }

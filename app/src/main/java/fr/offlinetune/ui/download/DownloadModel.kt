@@ -12,6 +12,14 @@ import fr.offlinetune.core.search.SongResult
 import fr.offlinetune.core.search.SongSources
 import fr.offlinetune.core.search.SourceResolver
 import fr.offlinetune.settings.AppSettings
+import fr.offlinetune.core.match.Matcher
+import fr.offlinetune.core.search.AlbumCard
+import fr.offlinetune.core.search.ProviderHit
+import fr.offlinetune.core.search.RecRow
+import fr.offlinetune.core.search.Recommendations
+import fr.offlinetune.core.search.providers.SpotifyAccount
+import fr.offlinetune.core.search.providers.SpotifyPlaylist
+import fr.offlinetune.library.LibTrack
 import fr.offlinetune.core.model.Sheet
 import fr.offlinetune.core.model.TrackInfo
 import fr.offlinetune.core.model.userMessage
@@ -55,12 +63,80 @@ sealed interface DlPhase {
     /** Multi-source results; [filter] null = « Tout ». */
     data class Federated(val outcome: SearchOutcome, val filter: Provider?) : DlPhase
     /** Sources of one song; [sources] null while resolving. */
-    data class Sources(val song: SongResult, val sources: SongSources?, val back: Federated) : DlPhase
+    data class Sources(val song: SongResult, val sources: SongSources?, val back: DlPhase) : DlPhase
+    /** Tracks of an album or of a Spotify playlist, only displayed; touching one opens its sources. */
+    data class SongList(val title: String, val subtitle: String?, val songs: List<SongResult>, val back: DlPhase) : DlPhase
     data class Editing(val edit: SheetEdit, val back: DlPhase?) : DlPhase
     data class Error(val message: String) : DlPhase
 }
 
-class DownloadModel(private val settings: SettingsStore, private val queue: DownloadQueue) {
+sealed interface ForYouState {
+    data object Loading : ForYouState
+    data class Ready(val rows: List<RecRow>, val spotify: List<SpotifyPlaylist>?, val spotifyError: String?) : ForYouState
+}
+
+class DownloadModel(
+    private val settings: SettingsStore,
+    private val queue: DownloadQueue,
+    private val spotifyAccount: SpotifyAccount,
+) {
+    private val recommendations = Recommendations()
+    private val _forYou = MutableStateFlow<ForYouState>(ForYouState.Loading)
+    val forYou: StateFlow<ForYouState> = _forYou.asStateFlow()
+    private var forYouKey: List<String>? = null
+
+    /** Suggestions from the library's most present artists (+ the user's Spotify playlists when logged in). */
+    fun loadForYou(tracks: List<LibTrack>, force: Boolean = false) {
+        val top = tracks.filter { it.artist != fr.offlinetune.library.LibraryScanner.UNKNOWN_ARTIST }
+            .groupingBy { Matcher.firstArtistOf(it.artist) }.eachCount().entries.sortedByDescending { it.value }.take(5).map { it.key }
+        val loggedIn = keys.spotifyTokens != null
+        val key = top + listOf(loggedIn.toString())
+        if (!force && key == forYouKey && _forYou.value is ForYouState.Ready) return
+        forYouKey = key
+        _forYou.value = ForYouState.Loading
+        scope.launch {
+            keys = settings.current()
+            val owned = tracks.map { Recommendations.key(it.artist, it.title) }.toSet()
+            val rows = runCatching { recommendations.forYou(top, owned) }.getOrDefault(emptyList())
+            var spErr: String? = null
+            val sp = if (keys.spotifyTokens == null) null else try { spotifyAccount.playlists() } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                spErr = e.userMessage(); null
+            }
+            _forYou.value = ForYouState.Ready(rows, sp, spErr)
+        }
+    }
+
+    private fun single(h: ProviderHit) = SongResult(h.title, h.artist, h.album, h.durationSec, h.coverUrl, mapOf(h.provider to h))
+
+    fun openAlbum(a: AlbumCard) {
+        val back = phase.value
+        launch(DlPhase.Loading("Chargement de l'album…")) {
+            DlPhase.SongList(a.title, listOfNotNull(a.artist, a.year?.toString()).joinToString(" · "), recommendations.albumTracks(a.id).map(::single), back)
+        }
+    }
+
+    fun openSpotifyPlaylist(p: SpotifyPlaylist) {
+        val back = phase.value
+        launch(DlPhase.Loading("Chargement de la playlist Spotify…")) {
+            val songs = spotifyAccount.tracks(p.id).map(::single)
+            DlPhase.SongList(p.name, "Playlist Spotify · ${songs.size} titres", songs, back)
+        }
+    }
+
+    /** Song touched in suggestions or a list (not only in search results). */
+    fun openAnySong(song: SongResult) {
+        val back = phase.value
+        job?.cancel()
+        _phase.value = DlPhase.Sources(song, null, back)
+        job = scope.launch {
+            val r = try { resolver.resolve(song) } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                SongSources(emptyList(), song.hits.values.filter { !it.provider.downloadable }, t.userMessage())
+            }
+            _phase.update { if (it is DlPhase.Sources && it.song == song) it.copy(sources = r) else it }
+        }
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _phase = MutableStateFlow<DlPhase>(DlPhase.Idle)
     val phase: StateFlow<DlPhase> = _phase.asStateFlow()
@@ -103,18 +179,7 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
 
     fun setFilter(p: Provider?) = _phase.update { if (it is DlPhase.Federated) it.copy(filter = p) else it }
 
-    fun openSong(song: SongResult) {
-        val back = phase.value as? DlPhase.Federated ?: return
-        job?.cancel()
-        _phase.value = DlPhase.Sources(song, null, back)
-        job = scope.launch {
-            val r = try { resolver.resolve(song) } catch (t: Throwable) {
-                if (t is kotlinx.coroutines.CancellationException) throw t
-                SongSources(emptyList(), song.hits.values.filter { !it.provider.downloadable }, t.userMessage())
-            }
-            _phase.update { if (it is DlPhase.Sources && it.song == song) it.copy(sources = r) else it }
-        }
-    }
+    fun openSong(song: SongResult) = openAnySong(song)
 
     fun chooseSource(option: DownloadOption) {
         val src = phase.value as? DlPhase.Sources ?: return
@@ -130,6 +195,7 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
         _phase.value = when (val p = phase.value) {
             is DlPhase.Editing -> p.back ?: DlPhase.Idle
             is DlPhase.Sources -> p.back
+            is DlPhase.SongList -> p.back
             else -> DlPhase.Idle
         }
     }

@@ -15,7 +15,7 @@ class App : Application() {
     val player by lazy { PlayerConnection(this) }
     val library by lazy { LibraryRepository(this, settings) }
     val downloads by lazy { DownloadQueue(this, settings, library) }
-    val downloadModel by lazy { DownloadModel(settings, downloads) }
+    val downloadModel by lazy { DownloadModel(settings, downloads, spotifyAccount) }
 
     /** Latest settings, readable without suspending (kept up to date from DataStore). */
     @Volatile var latest: fr.offlinetune.settings.AppSettings = fr.offlinetune.settings.AppSettings()

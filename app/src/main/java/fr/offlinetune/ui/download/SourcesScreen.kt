@@ -75,7 +75,7 @@ fun SourcesScreen(padding: PaddingValues, song: SongResult, sources: SongSources
                 badge = { PlatformBadge(o.provider, 34.dp) },
                 title = if (o.isMatch) "Correspondance YouTube" else o.label,
                 subtitle = "${o.format.label()} · paroles ${if (o.hasLyrics) "✓" else "✗"}",
-                action = "Choisir", strongAction = true,
+                action = "Choisir", strongAction = true, link = o.url,
             ) { onChoose(o) }
         }
         sources.message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
@@ -88,7 +88,7 @@ fun SourcesScreen(padding: PaddingValues, song: SongResult, sources: SongSources
             sources.listenOnly.forEach { h: ProviderHit ->
                 SourceRow(
                     badge = { PlatformBadge(h.provider, 34.dp) },
-                    title = h.provider.label, subtitle = h.quality, action = "Ouvrir ↗", strongAction = false,
+                    title = h.provider.label, subtitle = h.quality, action = "Ouvrir ↗", strongAction = false, link = h.url,
                 ) { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(h.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
             }
             Text(
@@ -101,7 +101,7 @@ fun SourcesScreen(padding: PaddingValues, song: SongResult, sources: SongSources
 }
 
 @Composable
-private fun SourceRow(badge: @Composable () -> Unit, title: String, subtitle: String, action: String, strongAction: Boolean, onClick: () -> Unit) {
+private fun SourceRow(badge: @Composable () -> Unit, title: String, subtitle: String, action: String, strongAction: Boolean, link: String? = null, onClick: () -> Unit) {
     GlassSurface(Modifier.fillMaxWidth().padding(vertical = 5.dp), RoundedCornerShape(18.dp)) {
         Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             badge()
@@ -110,6 +110,7 @@ private fun SourceRow(badge: @Composable () -> Unit, title: String, subtitle: St
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
             }
+            CopyLinkButton(link)
             Box(
                 Modifier.clip(RoundedCornerShape(50)).background(if (strongAction) Color.White else Color.Transparent)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
