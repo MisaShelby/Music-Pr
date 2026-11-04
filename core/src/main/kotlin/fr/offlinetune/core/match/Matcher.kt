@@ -19,6 +19,16 @@ object Matcher {
     private val VARIANTS = listOf("live", "cover", "karaoke", "instrumental", "nightcore", "sped up", "slowed", "acoustic", "remix", "8d")
     private val ARTIST_SPLIT = Regex("""\s*(,|&|\bx\b|\bet\b|\band\b|\bfeat\b\.?|\bft\b\.?|\bfeaturing\b)\s*""", RegexOption.IGNORE_CASE)
 
+    /** Removes "(Official Video)", "[Lyrics]", " - Radio Edit"… but keeps case and "(feat. X)". */
+    fun cleanTitle(s: String): String {
+        var t = BRACKET.replace(s) { m ->
+            val inner = m.groupValues[1]
+            if (NOISE_FRAGMENT.matches(inner) && !Regex("""\b(feat|ft|featuring)\b""", RegexOption.IGNORE_CASE).containsMatchIn(inner)) " " else m.value
+        }
+        t = t.split(" - ").filterIndexed { i, part -> i == 0 || !NOISE_FRAGMENT.matches(part) }.joinToString(" - ")
+        return t.replace(Regex("""\s+"""), " ").trim()
+    }
+
     fun normalize(s: String): String {
         var t = s
         // drop bracketed noise: "(Remastered 2011)", "[Official Video]", "(feat. X)"

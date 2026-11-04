@@ -1,6 +1,7 @@
 package fr.offlinetune.core.meta
 
 import fr.offlinetune.core.match.Matcher
+import fr.offlinetune.core.model.NetworkLost
 import fr.offlinetune.core.model.NotFound
 import fr.offlinetune.core.model.Platform
 import fr.offlinetune.core.model.SearchHit
@@ -11,16 +12,25 @@ import fr.offlinetune.core.net.arr
 import fr.offlinetune.core.net.int
 import fr.offlinetune.core.net.parseJson
 import fr.offlinetune.core.net.str
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonElement
 import java.net.URLEncoder
 
 /** Public Deezer API (no key). */
-class DeezerClient(private val base: String = "https://api.deezer.com") {
+class DeezerClient(
+    private val base: String = "https://api.deezer.com",
+    private val quotaDelayMs: Long = 1500,
+) {
 
     private suspend fun get(path: String): JsonElement {
-        val json = parseJson(Http.getText("$base$path"))
-        if (json.str("error", "type") != null) throw NotFound("Deezer $path")
-        return json
+        repeat(QUOTA_RETRIES) {
+            val json = parseJson(Http.getText("$base$path"))
+            if (json.str("error", "type") == null) return json
+            // Code 4 = "Quota limit exceeded" (≈ 50 requests / 5 s): wait and retry.
+            if (json.int("error", "code") != 4) throw NotFound("Deezer $path")
+            delay(quotaDelayMs)
+        }
+        throw NetworkLost()
     }
 
     suspend fun track(id: String): TrackInfo {
@@ -71,5 +81,6 @@ class DeezerClient(private val base: String = "https://api.deezer.com") {
 
     companion object {
         const val SAFE_SCORE = 0.75
+        private const val QUOTA_RETRIES = 6
     }
 }
