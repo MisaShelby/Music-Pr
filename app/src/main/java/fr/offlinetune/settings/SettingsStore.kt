@@ -23,8 +23,8 @@ data class AppSettings(
     val autoMix: Boolean = false,
     /** AudD token for « Identifier un son » (the user's own free key). */
     val auddToken: String? = null,
-    /** Timeline style in the player: BARS, MIRROR, WAVE, SPECTRUM, CLASSIC. */
-    val playerVisual: String = "BARS",
+    /** Waveform display in the player: OFF, TRANSPARENT (behind see-through controls), FULL (instead of the cover). */
+    val playerVisual: String = "TRANSPARENT",
     val pauseFade: Boolean = true,
     val autoLyrics: Boolean = true,
     val dsp: DspSettings = DspSettings(),

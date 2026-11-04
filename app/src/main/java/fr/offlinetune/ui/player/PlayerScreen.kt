@@ -32,6 +32,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Forward10
+import androidx.compose.material.icons.rounded.Replay10
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -115,7 +118,7 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
     val tracks by app.library.tracks.collectAsState()
     val current = tracks.firstOrNull { it.uri == state.mediaId }
     val settings by app.settings.flow.collectAsState(initial = app.latest)
-    val visual = runCatching { PlayerVisual.valueOf(settings.playerVisual) }.getOrDefault(PlayerVisual.BARS)
+    val viz = VizMode.from(settings.playerVisual)
     var visualMenu by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
@@ -124,21 +127,26 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Réduire") }
                 Text("En lecture", style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                Box {
-                    IconButton(onClick = { visualMenu = true }) { Icon(androidx.compose.material.icons.Icons.Rounded.GraphicEq, "Affichage de la barre") }
-                    androidx.compose.material3.DropdownMenu(expanded = visualMenu, onDismissRequest = { visualMenu = false }) {
-                        PlayerVisual.entries.forEach { v ->
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text(v.label, fontWeight = if (v == visual) FontWeight.Bold else FontWeight.Normal) },
-                                onClick = { visualMenu = false; scope.launch { app.settings.update { it.copy(playerVisual = v.name) } } },
-                            )
-                        }
-                    }
-                }
+                Spacer(Modifier.width(48.dp))
             }
 
+            var dragging by remember { mutableStateOf<Float?>(null) }
+            val dur = state.durationMs.coerceAtLeast(1)
+            val waveform = rememberWaveform(context, state.mediaId, state.durationMs)
+            val progress = dragging ?: (state.positionMs.toFloat() / dur).coerceIn(0f, 1f)
+            val onDrag: (Float) -> Unit = { dragging = it }
+            val onRelease: () -> Unit = { dragging?.let { app.player.seekTo((it * dur).toLong()) }; dragging = null }
+            val elapsed = formatDuration(dragging?.let { (it * dur).toLong() } ?: state.positionMs).ifEmpty { "0:00" }
+            val total = formatDuration(state.durationMs).ifEmpty { "0:00" }
+
             Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                if (showLyrics) {
+                if (!showLyrics && viz == VizMode.FULL) {
+                    // Plein écran: the song's waveform takes the cover's place, seekable everywhere.
+                    Box(Modifier.fillMaxSize().seekGestures(onDrag, onRelease)) {
+                        WaveformView(waveform, progress, Modifier.fillMaxSize().padding(vertical = 8.dp))
+                        TimeCorners(elapsed, total, dragging != null)
+                    }
+                } else if (showLyrics) {
                     LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) })
                 } else {
                     CoverImage(
@@ -156,59 +164,71 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
             )
             Spacer(Modifier.height(8.dp))
 
-            var dragging by remember { mutableStateOf<Float?>(null) }
-            val dur = state.durationMs.coerceAtLeast(1)
-            val waveform = rememberWaveform(context, state.mediaId, state.durationMs)
-            val spectrum = rememberLiveSpectrum(visual == PlayerVisual.SPECTRUM && state.isPlaying)
-            SeekVisualizer(
-                style = visual,
-                progress = dragging ?: (state.positionMs.toFloat() / dur).coerceIn(0f, 1f),
-                waveform = waveform,
-                spectrum = spectrum,
-                dragging = dragging != null,
-                label = dragging?.let { formatDuration((it * dur).toLong()).ifEmpty { "0:00" } },
-                onDrag = { dragging = it },
-                onRelease = { dragging?.let { app.player.seekTo((it * dur).toLong()) }; dragging = null },
-            )
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(formatDuration(dragging?.let { (it * dur).toLong() } ?: state.positionMs).ifEmpty { "0:00" }, style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            // Round option buttons: visualisation menu, repeat, shuffle, quality.
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box {
+                    RoundButton(Icons.Rounded.GraphicEq, "Visualisation", 40.dp, active = viz != VizMode.OFF) { visualMenu = true }
+                    androidx.compose.material3.DropdownMenu(expanded = visualMenu, onDismissRequest = { visualMenu = false }, containerColor = Ink.Surface) {
+                        VizMode.entries.forEach { v ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(v.label) },
+                                trailingIcon = { if (v == viz) Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = { visualMenu = false; scope.launch { app.settings.update { it.copy(playerVisual = v.name) } } },
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                RoundButton(
+                    if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                    when (state.repeatMode) { Player.REPEAT_MODE_ONE -> "Répéter le morceau"; Player.REPEAT_MODE_ALL -> "Répéter tout"; else -> "Pas de répétition" },
+                    40.dp, active = state.repeatMode != Player.REPEAT_MODE_OFF,
+                ) { app.player.cycleRepeat() }
+                Spacer(Modifier.width(10.dp))
+                RoundButton(Icons.Rounded.Shuffle, "Aléatoire", 40.dp, active = state.shuffle) { app.player.toggleShuffle() }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                     quality?.let { q ->
                         GlassSurface(shape = RoundedCornerShape(50)) {
                             Text(q, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
                         }
                     }
                 }
-                Text("-" + formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0)).ifEmpty { "0:00" }, style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+            }
+
+            val transport: @Composable () -> Unit = {
+                TransportRow(
+                    playing = state.isPlaying,
+                    onPrev = { app.player.previous() },
+                    onBack = { app.player.seekTo((state.positionMs - 10_000).coerceAtLeast(0)) },
+                    onPlay = { app.player.togglePlay() },
+                    onFwd = { app.player.seekTo((state.positionMs + 10_000).coerceAtMost(state.durationMs)) },
+                    onNext = { app.player.next() },
+                )
+            }
+            when (viz) {
+                VizMode.TRANSPARENT -> {
+                    // The song's waveform behind see-through controls; tap or slide on it to move in the song.
+                    Box(Modifier.fillMaxWidth().height(176.dp).padding(top = 8.dp)) {
+                        Box(Modifier.fillMaxSize().seekGestures(onDrag, onRelease)) {
+                            WaveformView(waveform, progress, Modifier.fillMaxSize().padding(bottom = 22.dp), strength = 0.9f)
+                            TimeCorners(elapsed, total, dragging != null)
+                        }
+                        Box(Modifier.fillMaxSize().padding(bottom = 22.dp), contentAlignment = Alignment.Center) { transport() }
+                    }
+                }
+                VizMode.FULL -> Box(Modifier.fillMaxWidth().padding(vertical = 14.dp)) { transport() }
+                VizMode.OFF -> {
+                    ClassicSeekBar(progress, dragging != null, onDrag, onRelease)
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(elapsed, style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.weight(1f))
+                        Text("-" + formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0)).ifEmpty { "0:00" },
+                            style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+                    }
+                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp)) { transport() }
+                }
             }
             SpeedRow(state.speed) { app.player.setSpeed(it) }
-
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { app.player.toggleShuffle() }) {
-                    Icon(Icons.Rounded.Shuffle, "Aléatoire", tint = if (state.shuffle) MaterialTheme.colorScheme.primary else Ink.Muted)
-                }
-                IconButton(onClick = { app.player.previous() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, "Précédent", Modifier.size(38.dp)) }
-                Box(
-                    Modifier.size(70.dp).shadow(16.dp, CircleShape).background(Color.White, CircleShape).clickable { app.player.togglePlay() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        if (state.isPlaying) "Pause" else "Lecture", tint = Ink.Background, modifier = Modifier.size(40.dp),
-                    )
-                }
-                IconButton(onClick = { app.player.next() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipNext, "Suivant", Modifier.size(38.dp)) }
-                IconButton(onClick = { app.player.cycleRepeat() }) {
-                    Icon(
-                        if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                        when (state.repeatMode) { Player.REPEAT_MODE_ONE -> "Répéter le morceau"; Player.REPEAT_MODE_ALL -> "Répéter tout"; else -> "Pas de répétition" },
-                        tint = if (state.repeatMode == Player.REPEAT_MODE_OFF) Ink.Muted else MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
+            Spacer(Modifier.height(8.dp))
 
             GlassSurface(Modifier.fillMaxWidth().padding(bottom = 12.dp), RoundedCornerShape(24.dp), strong = true) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -323,5 +343,38 @@ private fun BarButton(icon: ImageVector, label: String, active: Boolean = false,
     ) {
         Icon(icon, null, tint = tint)
         Text(label, style = MaterialTheme.typography.labelMedium, color = tint, fontWeight = if (active) FontWeight.Bold else FontWeight.Medium)
+    }
+}
+
+/** Elapsed time bottom-left, total bottom-right; the elapsed one turns bold while seeking. */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.TimeCorners(elapsed: String, total: String, seeking: Boolean) {
+    Text(elapsed, style = MaterialTheme.typography.labelLarge, fontWeight = if (seeking) FontWeight.Bold else FontWeight.Normal,
+        color = if (seeking) Color.White else Ink.Muted, modifier = Modifier.align(Alignment.BottomStart))
+    Text(total, style = MaterialTheme.typography.labelLarge, color = Ink.Muted, modifier = Modifier.align(Alignment.BottomEnd))
+}
+
+/** Translucent round button (the waveform shows through it). */
+@Composable
+private fun RoundButton(icon: ImageVector, label: String, size: androidx.compose.ui.unit.Dp, active: Boolean = false, filled: Boolean = false, onClick: () -> Unit) {
+    Box(
+        Modifier.size(size).clip(CircleShape)
+            .background(if (filled) Color.White.copy(alpha = 0.92f) else Color.White.copy(alpha = if (active) 0.22f else 0.10f))
+            .clickable(onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, label, Modifier.size(size * 0.5f),
+            tint = when { filled -> Ink.Background; active -> MaterialTheme.colorScheme.primary; else -> Color.White })
+    }
+}
+
+@Composable
+private fun TransportRow(playing: Boolean, onPrev: () -> Unit, onBack: () -> Unit, onPlay: () -> Unit, onFwd: () -> Unit, onNext: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        RoundButton(Icons.Rounded.SkipPrevious, "Précédent", 50.dp, onClick = onPrev)
+        RoundButton(Icons.Rounded.Replay10, "Reculer de 10 s", 50.dp, onClick = onBack)
+        RoundButton(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Lecture", 76.dp, filled = true, onClick = onPlay)
+        RoundButton(Icons.Rounded.Forward10, "Avancer de 10 s", 50.dp, onClick = onFwd)
+        RoundButton(Icons.Rounded.SkipNext, "Suivant", 50.dp, onClick = onNext)
     }
 }
