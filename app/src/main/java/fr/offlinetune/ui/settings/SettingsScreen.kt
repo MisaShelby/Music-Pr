@@ -110,6 +110,14 @@ fun SettingsScreen(padding: PaddingValues) {
         )
         KeyField("Spotify — Client ID", s.spotifyId, secret = false) { v -> update { it.copy(spotifyId = v) } }
         KeyField("Spotify — Client Secret", s.spotifySecret, secret = true) { v -> update { it.copy(spotifySecret = v) } }
+        Spacer(Modifier.height(8.dp))
+        if (s.spotifyTokens == null) {
+            Clickable("Se connecter à Spotify", "Pour afficher et télécharger les titres de vos playlists Spotify (nécessite le Client ID ci-dessus)") {
+                fr.offlinetune.spotify.SpotifyLogin.start(context)
+            }
+        } else {
+            Clickable("Connecté à Spotify", "Toucher pour se déconnecter") { update { it.copy(spotifyTokens = null) } }
+        }
         KeyField("Tidal — Client ID", s.tidalId, secret = false) { v -> update { it.copy(tidalId = v) } }
         KeyField("Tidal — Client Secret", s.tidalSecret, secret = true) { v -> update { it.copy(tidalSecret = v) } }
 

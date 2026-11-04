@@ -29,6 +29,10 @@ data class AppSettings(
     val spotifySecret: String? = null,
     val tidalId: String? = null,
     val tidalSecret: String? = null,
+    /** Spotify account login (official PKCE): tokens, plus the verifier/state of a login in progress. */
+    val spotifyTokens: fr.offlinetune.core.search.providers.SpotifyTokens? = null,
+    val spotifyPkceVerifier: String? = null,
+    val spotifyPkceState: String? = null,
 ) {
     val spotifyKeys get() = keyPair(spotifyId, spotifySecret)
     val tidalKeys get() = keyPair(tidalId, tidalSecret)

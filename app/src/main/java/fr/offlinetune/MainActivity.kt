@@ -62,6 +62,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleShare(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW && fr.offlinetune.spotify.SpotifyLogin.isCallback(intent.data)) {
+            fr.offlinetune.spotify.SpotifyLogin.handle(this, intent.data!!)
+            intent.data = null
+            return
+        }
         if (intent?.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT)?.let { sharedText = it }
     }
 }
