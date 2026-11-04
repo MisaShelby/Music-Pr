@@ -85,7 +85,13 @@ class LibraryRepository(private val context: Context, private val settings: Sett
         return if (ok) u else null
     }
 
+    private var scannedOnce = false
+
+    /** First display of the library in this app session: scan; later visits reuse the result. */
+    suspend fun refreshOnce() { if (!scannedOnce) refresh() }
+
     suspend fun refresh() = mutex.withLock {
+        scannedOnce = true
         val tree = grantedTree(settings.current().libraryTreeUri)
         if (tree == null) { _state.value = LibState.NeedsFolder; return@withLock }
         _state.value = LibState.Scanning

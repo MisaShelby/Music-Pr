@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,6 +73,7 @@ fun formatDuration(ms: Long?): String {
 private sealed interface Detail {
     data class Album(val name: String, val artist: String) : Detail
     data class Artist(val name: String) : Detail
+    data class Playlist(val uri: String, val name: String) : Detail
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -86,7 +88,8 @@ fun LibraryScreen(contentPadding: PaddingValues) {
     var query by rememberSaveable { mutableStateOf("") }
     var detail by remember { mutableStateOf<Detail?>(null) }
 
-    LaunchedEffect(Unit) { app.library.loadCache(); app.library.refresh() }
+    // Scan once per app start; afterwards only with « Actualiser » (not on every tab switch).
+    LaunchedEffect(Unit) { app.library.loadCache(); app.library.refreshOnce() }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri != null) {
@@ -106,7 +109,7 @@ fun LibraryScreen(contentPadding: PaddingValues) {
                 IconButton(onClick = { detail = null }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Retour") }
             }
             Text(
-                when (val d = detail) { is Detail.Album -> d.name; is Detail.Artist -> d.name; null -> "Bibliothèque" },
+                when (val d = detail) { is Detail.Album -> d.name; is Detail.Artist -> d.name; is Detail.Playlist -> d.name; null -> "Bibliothèque" },
                 style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { scope.launch { app.library.refresh() } }) { Icon(Icons.Rounded.Refresh, "Actualiser") }
@@ -117,8 +120,10 @@ fun LibraryScreen(contentPadding: PaddingValues) {
             state == LibState.NeedsFolder || state is LibState.Error -> EmptyLibrary(
                 (state as? LibState.Error)?.message ?: "Choisissez le dossier où se trouve votre musique sur le téléphone.",
             ) { pickFolder.launch(null) }
+            detail is Detail.Playlist -> PlaylistDetail(app, (detail as Detail.Playlist).uri, onGone = { detail = null }, onRenamed = { n -> detail = (detail as Detail.Playlist).copy(name = n) })
             detail != null -> {
                 val list = when (val d = detail!!) {
+                    is Detail.Playlist -> emptyList()
                     is Detail.Album -> tracks.filter { (it.album ?: "") == d.name && (it.albumArtist ?: it.artist) == d.artist }
                         .sortedWith(compareBy<LibTrack> { it.trackNumber ?: Int.MAX_VALUE }.thenBy { it.title })
                     is Detail.Artist -> tracks.filter { it.artist == d.name || it.albumArtist == d.name }
@@ -141,11 +146,13 @@ fun LibraryScreen(contentPadding: PaddingValues) {
                     }
                 }
                 PrimaryTabRow(selectedTabIndex = tab, containerColor = androidx.compose.ui.graphics.Color.Transparent) {
-                    listOf("Titres", "Albums", "Artistes").forEachIndexed { i, t ->
+                    listOf("Titres", "Albums", "Artistes", "Playlists").forEachIndexed { i, t ->
                         Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) })
                     }
                 }
-                if (tracks.isEmpty() && state == LibState.Idle) {
+                if (tab == 3) {
+                    PlaylistsTab(app) { p -> detail = Detail.Playlist(p.file.uri, p.name) }
+                } else if (tracks.isEmpty() && state == LibState.Idle) {
                     EmptyHint("Aucun morceau trouvé dans ce dossier. Téléchargez un morceau ou choisissez un autre dossier dans Réglages.")
                 } else when (tab) {
                     0 -> TrackList(filtered, app)
@@ -166,6 +173,14 @@ fun LibraryScreen(contentPadding: PaddingValues) {
 @Composable
 private fun TrackList(list: List<LibTrack>, app: App) {
     val current by app.player.state.collectAsState()
+    val context = LocalContext.current
+    var adding by remember { mutableStateOf<LibTrack?>(null) }
+    adding?.let { t ->
+        fr.offlinetune.ui.player.AddToPlaylistSheet(app, listOf(t)) { msg ->
+            adding = null
+            msg?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() }
+        }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         if (list.size > 1) item {
             Row(
@@ -181,15 +196,16 @@ private fun TrackList(list: List<LibTrack>, app: App) {
             }
         }
         itemsIndexed(list, key = { _, t -> t.uri }) { i, t ->
-            TrackRow(t, playing = current.mediaId == t.uri) { app.player.playList(list.map { it.playable() }, i) }
+            TrackRow(t, playing = current.mediaId == t.uri, onLongClick = { adding = t }) { app.player.playList(list.map { it.playable() }, i) }
         }
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun TrackRow(t: LibTrack, playing: Boolean, onClick: () -> Unit) {
+fun TrackRow(t: LibTrack, playing: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CoverImage(Covers.key(t.coverUri, t.uri), RoundedCornerShape(8.dp), Modifier.size(48.dp), size = 128)
