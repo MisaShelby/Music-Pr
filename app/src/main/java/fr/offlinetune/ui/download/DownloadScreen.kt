@@ -79,12 +79,15 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
     LaunchedEffect(sharedText) {
         if (sharedText != null) { model.submit(sharedText); onSharedConsumed() }
     }
-    BackHandler(enabled = phase is DlPhase.Editing) { model.backToResults() }
-    BackHandler(enabled = phase is DlPhase.Results || phase is DlPhase.Error) { model.reset() }
+    BackHandler(enabled = phase is DlPhase.Editing || phase is DlPhase.Sources || phase is DlPhase.Federated || phase is DlPhase.Error) { model.back() }
 
     val current = phase
     if (current is DlPhase.Editing) {
-        SheetScreen(padding, current.edit, model, onBack = { model.backToResults() })
+        SheetScreen(padding, current.edit, model, onBack = { model.back() })
+        return
+    }
+    if (current is DlPhase.Sources) {
+        SourcesScreen(padding, current.song, current.sources, onBack = { model.back() }, onChoose = { model.chooseSource(it) })
         return
     }
 
@@ -128,7 +131,7 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
             is DlPhase.Error -> item {
                 Text(current.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(20.dp))
             }
-            is DlPhase.Results -> item { ResultsList(current.results) { model.openHit(it) } }
+            is DlPhase.Federated -> item { SearchResults(current.outcome, current.filter, { model.setFilter(it) }, { model.openSong(it) }) }
             else -> if (downloads.isEmpty()) item {
                 Text(
                     "Collez un lien Spotify, Deezer, YouTube, YouTube Music ou SoundCloud, ou partagez-le depuis l'app d'origine. " +

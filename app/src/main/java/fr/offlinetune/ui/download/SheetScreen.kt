@@ -38,6 +38,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -143,6 +144,18 @@ fun SheetScreen(padding: PaddingValues, edit: SheetEdit, model: DownloadModel, o
                 }
                 TextButton(onClick = { model.refreshLyrics() }, contentPadding = PaddingValues(0.dp)) {
                     Icon(Icons.Rounded.Refresh, null); Spacer(Modifier.width(6.dp)); Text("Rechercher à nouveau")
+                }
+            }
+            Section("Ajouter à une playlist") {
+                val playlists by (context.applicationContext as fr.offlinetune.App).library.playlists.collectAsState()
+                if (playlists.isEmpty()) {
+                    Text("Aucune liste. Créez-en une depuis la Bibliothèque › Playlists.", color = Ink.Muted)
+                }
+                playlists.forEach { p ->
+                    Row(Modifier.fillMaxWidth().clickable { model.togglePlaylist(p.file.uri) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = p.file.uri in edit.playlistUris, onCheckedChange = { model.togglePlaylist(p.file.uri) })
+                        Text(p.name, style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
             }
             edit.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }

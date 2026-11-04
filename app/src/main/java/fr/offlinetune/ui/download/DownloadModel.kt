@@ -2,7 +2,16 @@ package fr.offlinetune.ui.download
 
 import fr.offlinetune.core.lyrics.LrclibClient
 import fr.offlinetune.core.lyrics.LyricsProvider
-import fr.offlinetune.core.model.SearchHit
+import fr.offlinetune.core.link.LinkParser
+import fr.offlinetune.core.link.ParsedInput
+import fr.offlinetune.core.search.DownloadOption
+import fr.offlinetune.core.search.FederatedSearch
+import fr.offlinetune.core.search.Provider
+import fr.offlinetune.core.search.SearchOutcome
+import fr.offlinetune.core.search.SongResult
+import fr.offlinetune.core.search.SongSources
+import fr.offlinetune.core.search.SourceResolver
+import fr.offlinetune.settings.AppSettings
 import fr.offlinetune.core.model.Sheet
 import fr.offlinetune.core.model.TrackInfo
 import fr.offlinetune.core.model.userMessage
@@ -26,6 +35,8 @@ data class SheetEdit(
     val sheet: Sheet,
     val edited: TrackInfo,
     val includeLyrics: Boolean = true,
+    /** Playlists the track will be added to once downloaded. */
+    val playlistUris: Set<String> = emptySet(),
     val busy: String? = null,
     val error: String? = null,
 )
@@ -41,8 +52,11 @@ object SheetMerge {
 sealed interface DlPhase {
     data object Idle : DlPhase
     data class Loading(val what: String) : DlPhase
-    data class Results(val results: InputResult.Results) : DlPhase
-    data class Editing(val edit: SheetEdit, val back: InputResult.Results?) : DlPhase
+    /** Multi-source results; [filter] null = « Tout ». */
+    data class Federated(val outcome: SearchOutcome, val filter: Provider?) : DlPhase
+    /** Sources of one song; [sources] null while resolving. */
+    data class Sources(val song: SongResult, val sources: SongSources?, val back: Federated) : DlPhase
+    data class Editing(val edit: SheetEdit, val back: DlPhase?) : DlPhase
     data class Error(val message: String) : DlPhase
 }
 
@@ -56,32 +70,73 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
     private val lrclib = LrclibClient()
     private val lyrics = LyricsProvider { info -> if (settings.current().autoLyrics) lrclib.find(info) else null }
     private val service = SheetService.create(lyrics)
+    private val newPipe = fr.offlinetune.core.meta.NewPipeSource()
+    private val resolver = SourceResolver(newPipe, lyrics)
+    @Volatile private var keys: AppSettings = AppSettings()
+    private val federated = FederatedSearch.create({ keys.spotifyKeys }, { keys.tidalKeys }, newPipe)
 
+    init {
+        scope.launch { settings.flow.collect { keys = it } }
+    }
+
+    /** A link opens its sheet directly (v1); text searches every platform at once. */
     fun submit(text: String = input.value) {
         if (text.isBlank()) return
         input.value = text.trim()
+        val isQuery = runCatching { LinkParser.parse(text) is ParsedInput.Query }.getOrDefault(false)
+        if (isQuery) {
+            launch(DlPhase.Loading("Recherche sur toutes les plateformes…")) {
+                val o = federated.search(text.trim())
+                if (o.songs.isEmpty()) DlPhase.Error("Aucun résultat. Essayez d'autres mots ou collez un lien.")
+                else DlPhase.Federated(o, null)
+            }
+            return
+        }
         launch(DlPhase.Loading("Recherche des infos du morceau…")) {
             when (val r = service.open(text)) {
                 is InputResult.Ready -> DlPhase.Editing(SheetEdit(r.sheet, r.sheet.info), null)
-                is InputResult.Results ->
-                    if (r.deezer.isEmpty() && r.youtube.isEmpty()) DlPhase.Error("Aucun résultat. Essayez d'autres mots ou collez un lien.")
-                    else DlPhase.Results(r)
+                is InputResult.Results -> DlPhase.Error("Aucun résultat.")
             }
         }
     }
 
-    fun openHit(hit: SearchHit) {
-        val back = (phase.value as? DlPhase.Results)?.results
-        launch(DlPhase.Loading("Préparation de la fiche…")) {
-            val sheet = service.openHit(hit)
-            DlPhase.Editing(SheetEdit(sheet, sheet.info), back)
+    fun setFilter(p: Provider?) = _phase.update { if (it is DlPhase.Federated) it.copy(filter = p) else it }
+
+    fun openSong(song: SongResult) {
+        val back = phase.value as? DlPhase.Federated ?: return
+        job?.cancel()
+        _phase.value = DlPhase.Sources(song, null, back)
+        job = scope.launch {
+            val r = try { resolver.resolve(song) } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                SongSources(emptyList(), song.hits.values.filter { !it.provider.downloadable }, t.userMessage())
+            }
+            _phase.update { if (it is DlPhase.Sources && it.song == song) it.copy(sources = r) else it }
         }
     }
 
-    fun backToResults() {
-        sheetJob?.cancel()
-        val e = phase.value as? DlPhase.Editing ?: return
-        _phase.value = e.back?.let { DlPhase.Results(it) } ?: DlPhase.Idle
+    fun chooseSource(option: DownloadOption) {
+        val src = phase.value as? DlPhase.Sources ?: return
+        launch(DlPhase.Loading("Préparation de la fiche…")) {
+            val sheet = service.fromSong(src.song, option)
+            DlPhase.Editing(SheetEdit(sheet, sheet.info), src)
+        }
+    }
+
+    /** Back one level: sheet → sources/results, sources → results, results → empty field. */
+    fun back() {
+        job?.cancel(); sheetJob?.cancel()
+        _phase.value = when (val p = phase.value) {
+            is DlPhase.Editing -> p.back ?: DlPhase.Idle
+            is DlPhase.Sources -> p.back
+            else -> DlPhase.Idle
+        }
+    }
+
+    fun backToResults() = back()
+
+    fun togglePlaylist(uri: String) = updateEdit { e ->
+        e.copy(playlistUris = if (uri in e.playlistUris) e.playlistUris - uri else e.playlistUris + uri)
     }
 
     fun reset() { job?.cancel(); sheetJob?.cancel(); _phase.value = DlPhase.Idle; input.value = "" }
@@ -115,7 +170,7 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
     fun download() {
         val e = (phase.value as? DlPhase.Editing)?.edit ?: return
         if (e.sheet.source == null) return
-        queue.enqueue(DownloadRequest(e.sheet, e.edited, e.includeLyrics && e.sheet.lyrics != null))
+        queue.enqueue(DownloadRequest(e.sheet, e.edited, e.includeLyrics && e.sheet.lyrics != null, e.playlistUris.toList()))
         reset()
     }
 
