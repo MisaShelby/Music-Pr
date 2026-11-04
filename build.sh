@@ -4,5 +4,5 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ./gradlew :core:test -PnoNetwork
 ./gradlew :app:assembleDebug
-cp app/build/outputs/apk/debug/app-debug.apk OfflineTune.apk
-echo "APK prêt : $(pwd)/OfflineTune.apk"
+cp app/build/outputs/apk/debug/app-debug.apk MusiquePr.apk
+echo "APK prêt : $(pwd)/MusiquePr.apk"

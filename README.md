@@ -26,7 +26,7 @@ Lecteur et téléchargeur de musique hors ligne pour Android, sans publicité ni
 
 ## Installer
 
-1. Copiez `OfflineTune.apk` sur le téléphone (ou installez-le par USB : `adb install -r OfflineTune.apk`).
+1. Copiez `MusiquePr.apk` sur le téléphone (ou installez-le par USB : `adb install -r MusiquePr.apk`).
 2. Ouvrez-le et autorisez l'installation depuis cette source si Android le demande.
 3. Au premier lancement, choisissez le dossier de musique (onglet Bibliothèque).
 
@@ -43,7 +43,7 @@ Prérequis : JDK 17 et le SDK Android (installé par Android Studio), variable `
 ./build.sh
 ```
 
-Le script lance les tests du cœur (sans réseau), compile l'APK et le copie à la racine : `OfflineTune.apk`.
+Le script lance les tests du cœur (sans réseau), compile l'APK et le copie à la racine : `MusiquePr.apk`.
 
 Tests complets du cœur, avec de vrais appels réseau (Spotify, Deezer, YouTube, SoundCloud, LRCLIB) :
 
@@ -57,7 +57,7 @@ YouTube modifie régulièrement son site. Si l'app affiche « YouTube a changé,
 
 1. Regardez la dernière version de NewPipeExtractor : <https://github.com/TeamNewPipe/NewPipeExtractor/releases>
 2. Remplacez la valeur de `newpipe` dans `gradle/libs.versions.toml` (ex. `newpipe = "v0.26.6"`).
-3. Lancez `./build.sh` puis réinstallez `OfflineTune.apk`.
+3. Lancez `./build.sh` puis réinstallez `MusiquePr.apk`.
 
 ## Clés Spotify et Tidal (facultatif)
 
