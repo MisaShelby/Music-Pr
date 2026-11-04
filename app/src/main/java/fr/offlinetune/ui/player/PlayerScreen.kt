@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Lyrics
@@ -79,6 +80,7 @@ import fr.offlinetune.ui.glass.GlassSurface
 import fr.offlinetune.ui.library.formatDuration
 import fr.offlinetune.ui.theme.Ink
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** "Opus · 143 kb/s" from the file itself (container + measured bitrate). */
@@ -112,13 +114,27 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
     }
     val tracks by app.library.tracks.collectAsState()
     val current = tracks.firstOrNull { it.uri == state.mediaId }
+    val settings by app.settings.flow.collectAsState(initial = app.latest)
+    val visual = runCatching { PlayerVisual.valueOf(settings.playerVisual) }.getOrDefault(PlayerVisual.BARS)
+    var visualMenu by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     AppBackdrop(coverKey, MaterialTheme.colorScheme.primary, Modifier.clickable(enabled = false) {}) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Réduire") }
                 Text("En lecture", style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                Spacer(Modifier.width(48.dp))
+                Box {
+                    IconButton(onClick = { visualMenu = true }) { Icon(androidx.compose.material.icons.Icons.Rounded.GraphicEq, "Affichage de la barre") }
+                    androidx.compose.material3.DropdownMenu(expanded = visualMenu, onDismissRequest = { visualMenu = false }) {
+                        PlayerVisual.entries.forEach { v ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(v.label, fontWeight = if (v == visual) FontWeight.Bold else FontWeight.Normal) },
+                                onClick = { visualMenu = false; scope.launch { app.settings.update { it.copy(playerVisual = v.name) } } },
+                            )
+                        }
+                    }
+                }
             }
 
             Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
@@ -142,8 +158,13 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
 
             var dragging by remember { mutableStateOf<Float?>(null) }
             val dur = state.durationMs.coerceAtLeast(1)
-            TimeBar(
+            val waveform = rememberWaveform(context, state.mediaId, state.durationMs)
+            val spectrum = rememberLiveSpectrum(visual == PlayerVisual.SPECTRUM && state.isPlaying)
+            SeekVisualizer(
+                style = visual,
                 progress = dragging ?: (state.positionMs.toFloat() / dur).coerceIn(0f, 1f),
+                waveform = waveform,
+                spectrum = spectrum,
                 dragging = dragging != null,
                 label = dragging?.let { formatDuration((it * dur).toLong()).ifEmpty { "0:00" } },
                 onDrag = { dragging = it },

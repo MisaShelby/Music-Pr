@@ -14,9 +14,33 @@ object DspState {
     @Volatile var settings: DspSettings = DspSettings()
 }
 
+/** Last mono samples played by the main player, for the « Spectre » visualizer (no microphone involved). */
+object LiveSpectrum {
+    private val ring = FloatArray(fr.offlinetune.core.dsp.Spectrum.SIZE)
+    private var pos = 0
+    @Volatile private var rate = 0
+
+    @Synchronized fun push(samples: FloatArray, count: Int, channels: Int, sampleRate: Int) {
+        rate = sampleRate
+        var i = 0
+        while (i + channels <= count) {
+            var m = 0f
+            for (c in 0 until channels) m += samples[i + c]
+            ring[pos] = m / channels
+            pos = (pos + 1) % ring.size
+            i += channels
+        }
+    }
+
+    @Synchronized fun snapshot(): Pair<FloatArray, Int> {
+        val out = FloatArray(ring.size) { ring[(pos + it) % ring.size] }
+        return out to rate
+    }
+}
+
 /** Runs the app's own [DspChain] on decoded PCM (16-bit or float), inside ExoPlayer's audio sink. */
 @UnstableApi
-class DspAudioProcessor(private val bassCutDb: () -> Float = { 0f }) : BaseAudioProcessor() {
+class DspAudioProcessor(private val bassCutDb: () -> Float = { 0f }, private val tap: Boolean = false) : BaseAudioProcessor() {
     private val chain = DspChain()
     // DJ bass swap: extra low shelf (150 Hz) driven by the crossfade controller.
     private var shelf: fr.offlinetune.core.dsp.Biquad? = null
@@ -55,6 +79,7 @@ class DspAudioProcessor(private val bassCutDb: () -> Float = { 0f }) : BaseAudio
             for (f in 0 until samples / ch) for (c in 0 until ch) { val i = f * ch + c; scratch[i] = b.process(scratch[i].toDouble(), c).toFloat() }
         } else if (shelf != null) { shelf = null; shelfDb = 0f }
 
+        if (tap) LiveSpectrum.push(scratch, samples, fmt.channelCount, fmt.sampleRate)
         val out = replaceOutputBuffer(remaining).order(ByteOrder.nativeOrder())
         if (float) for (i in 0 until samples) out.putFloat(scratch[i])
         else for (i in 0 until samples) out.putShort((scratch[i] * 32767f).coerceIn(-32768f, 32767f).toInt().toShort())

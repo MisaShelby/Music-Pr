@@ -30,7 +30,7 @@ class CrossfadeController(private val context: Context) {
 
     @Volatile private var mainBassCut = 0f
     @Volatile private var auxBassCut = 0f
-    val main: ExoPlayer = buildPlayer(context, handleFocus = true) { mainBassCut }
+    val main: ExoPlayer = buildPlayer(context, handleFocus = true, tap = true) { mainBassCut }
     private val handler = Handler(Looper.getMainLooper())
 
     private sealed interface Xf {
@@ -277,10 +277,10 @@ class CrossfadeController(private val context: Context) {
         private const val PAUSE_FADE_MS = 250L
         private const val BASS_CUT = -24f
 
-        fun buildPlayer(context: Context, handleFocus: Boolean, bassCut: () -> Float = { 0f }): ExoPlayer {
+        fun buildPlayer(context: Context, handleFocus: Boolean, tap: Boolean = false, bassCut: () -> Float = { 0f }): ExoPlayer {
             val renderers = object : DefaultRenderersFactory(context) {
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
-                    DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(DspAudioProcessor(bassCut))).build()
+                    DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(DspAudioProcessor(bassCut, tap))).build()
             }
             return ExoPlayer.Builder(context, renderers)
                 .setAudioAttributes(
