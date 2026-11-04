@@ -127,6 +127,15 @@ class NewPipeSource {
         search(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS).ifEmpty { search(YoutubeSearchQueryHandlerFactory.VIDEOS) }
     }
 
+    /** SoundCloud track search. */
+    suspend fun searchSoundCloud(query: String, limit: Int = 15): List<SearchHit> = extract("soundcloud.com") {
+        val ex = ServiceList.SoundCloud.getSearchExtractor(query, listOf("tracks"), "")
+        ex.fetchPage()
+        ex.initialPage.items.filterIsInstance<StreamInfoItem>().take(limit).map {
+            SearchHit(Platform.SOUNDCLOUD, it.url, it.name, it.uploaderName ?: "", it.duration.takeIf { d -> d > 0 }?.toInt(), bestImage(it.thumbnails))
+        }
+    }
+
     /** Free search for the "YouTube" results tab: YouTube Music songs first, then regular videos. */
     suspend fun searchYoutube(query: String, limit: Int = 20): List<SearchHit> = extract("youtube.com") {
         fun search(filter: String, kind: Platform): List<SearchHit> {
