@@ -53,7 +53,7 @@ enum class PlayerVisual(val label: String) {
     BARS("Barres"), MIRROR("Miroir"), WAVE("Onde"), SPECTRUM("Spectre"), CLASSIC("Classique")
 }
 
-private const val BAR_COUNT = 72
+private const val BAR_COUNT = 56
 
 /** Waveform of the whole track (decoded once in the background, cached by the analyzer). */
 @Composable
@@ -102,8 +102,9 @@ fun SeekVisualizer(
     onRelease: () -> Unit,
 ) {
     val accent = MaterialTheme.colorScheme.primary
-    val classicH by animateDpAsState(if (dragging) 14.dp else 6.dp, label = "bar")
-    val height = if (style == PlayerVisual.CLASSIC) 44.dp else 76.dp
+    // Bigger: thick classic bar, tall visual styles.
+    val classicH by animateDpAsState(if (dragging) 22.dp else 12.dp, label = "bar")
+    val height = if (style == PlayerVisual.CLASSIC) 56.dp else 128.dp
     Box(
         Modifier.fillMaxWidth().height(height)
             .pointerInput(Unit) {
@@ -126,7 +127,7 @@ fun SeekVisualizer(
             }
             PlayerVisual.BARS, PlayerVisual.MIRROR -> Canvas(Modifier.fillMaxSize().padding(vertical = 6.dp)) {
                 val bars = waveform ?: FloatArray(BAR_COUNT) { 0.12f }
-                val gap = 2.dp.toPx()
+                val gap = 3.dp.toPx()
                 val w = (size.width - gap * (bars.size - 1)) / bars.size
                 bars.forEachIndexed { i, v ->
                     val x = i * (w + gap)
@@ -151,21 +152,20 @@ fun SeekVisualizer(
                     }
                 }
                 val up = path(1f); val down = path(-1f)
-                drawPath(up, rest, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
-                drawPath(down, rest, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(up, rest, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(down, rest, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
                 val px = size.width * progress
                 drawContext.canvas.save()
                 drawContext.canvas.clipRect(0f, 0f, px, size.height)
-                drawPath(up, Brush.horizontalGradient(listOf(accent, played)), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
-                drawPath(down, Brush.horizontalGradient(listOf(accent, played)), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(up, Brush.horizontalGradient(listOf(accent, played)), style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(down, Brush.horizontalGradient(listOf(accent, played)), style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
                 drawContext.canvas.restore()
-                drawLine(played, Offset(px, 0f), Offset(px, size.height), 2.dp.toPx(), StrokeCap.Round)
             }
             PlayerVisual.SPECTRUM -> Canvas(Modifier.fillMaxSize()) {
                 val n = spectrum.size
                 val gap = 3.dp.toPx()
                 val w = (size.width - gap * (n - 1)) / n
-                val barArea = size.height - 8.dp.toPx()
+                val barArea = size.height
                 spectrum.forEachIndexed { i, v ->
                     val h = (0.04f + 0.96f * v) * barArea
                     drawRoundRect(
@@ -173,10 +173,6 @@ fun SeekVisualizer(
                         Offset(i * (w + gap), barArea - h), Size(w, h), CornerRadius(w / 2, w / 2),
                     )
                 }
-                // Thin progress line under the spectrum.
-                val y = size.height - 2.dp.toPx()
-                drawLine(rest, Offset(0f, y), Offset(size.width, y), 3.dp.toPx(), StrokeCap.Round)
-                drawLine(played, Offset(0f, y), Offset(size.width * progress, y), 3.dp.toPx(), StrokeCap.Round)
             }
         }
         if (label != null) {
