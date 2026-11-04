@@ -97,14 +97,23 @@ fun SoundScreen(padding: PaddingValues) {
             }
         }
 
-        LabeledSlider("Préampli", dsp.preampDb, -12f..12f, formatDb(dsp.preampDb), dsp.enabled) { v -> updateDsp { it.copy(preampDb = v) } }
-        LabeledSlider("Basses", dsp.bassDb, -12f..12f, formatDb(dsp.bassDb), dsp.enabled) { v -> updateDsp { it.copy(bassDb = v) } }
-        LabeledSlider("Aigus", dsp.trebleDb, -12f..12f, formatDb(dsp.trebleDb), dsp.enabled) { v -> updateDsp { it.copy(trebleDb = v) } }
-        LabeledSlider(
-            "Balance", dsp.balance, -1f..1f,
-            when { dsp.balance < -0.01f -> "G ${(-dsp.balance * 100).roundToInt()} %"; dsp.balance > 0.01f -> "D ${(dsp.balance * 100).roundToInt()} %"; else -> "Centre" },
-            dsp.enabled,
-        ) { v -> updateDsp { it.copy(balance = if (kotlin.math.abs(v) < 0.04f) 0f else v) } }
+        // DJ-style knobs: drag to turn, double tap to reset.
+        Spacer(Modifier.height(20.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Knob("Préampli", dsp.preampDb, -12f..12f, formatDb(dsp.preampDb) + " dB", dsp.enabled) { v -> updateDsp { it.copy(preampDb = v) } }
+            Knob("Basses", dsp.bassDb, -12f..12f, formatDb(dsp.bassDb) + " dB", dsp.enabled) { v -> updateDsp { it.copy(bassDb = v) } }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Knob("Aigus", dsp.trebleDb, -12f..12f, formatDb(dsp.trebleDb) + " dB", dsp.enabled) { v -> updateDsp { it.copy(trebleDb = v) } }
+            Knob(
+                "Balance", dsp.balance, -1f..1f,
+                when { dsp.balance < -0.01f -> "G ${(-dsp.balance * 100).roundToInt()} %"; dsp.balance > 0.01f -> "D ${(dsp.balance * 100).roundToInt()} %"; else -> "Centre" },
+                dsp.enabled, step = 0.05f,
+            ) { v -> updateDsp { it.copy(balance = if (kotlin.math.abs(v) < 0.04f) 0f else v) } }
+        }
+        Text("Glissez pour tourner, touchez deux fois pour remettre à zéro.", style = MaterialTheme.typography.labelMedium, color = Ink.Muted,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
 
         ToggleRow("Mono", "Mélange gauche et droite sur les deux côtés.", dsp.mono, dsp.enabled) { v -> updateDsp { it.copy(mono = v) } }
         ToggleRow("Protection contre la saturation", "Limiteur doux quand le son dépasse −1 dB.", dsp.limiter, dsp.enabled) { v -> updateDsp { it.copy(limiter = v) } }
