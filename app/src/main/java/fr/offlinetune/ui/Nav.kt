@@ -88,7 +88,7 @@ fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
             }
         }
         AnimatedVisibility(playerOpen && state.mediaId != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            PlayerScreen(app, state, coverKey, tracks.firstOrNull { it.uri == state.mediaId }?.lrcUri, onClose = { playerOpen = false })
+            PlayerScreen(app, state, coverKey, tracks.firstOrNull { it.uri == state.mediaId }?.lrcUri, onClose = { playerOpen = false }, onOpenSound = { tab = 2; playerOpen = false })
         }
     }
 }
