@@ -102,8 +102,13 @@ class DownloadQueue(
         if (settings.current().libraryTreeUri != treeUri.toString() || added.isEmpty()) {
             return "Téléchargé, mais ajout à la liste impossible : le dossier de téléchargement doit être celui de la bibliothèque."
         }
-        library.playlists.value.filter { it.file.uri in uris }.forEach { library.addToPlaylist(it, added) }
-        return null
+        return try {
+            val targets = library.playlists.value.filter { it.file.uri in uris }
+            targets.forEach { library.addToPlaylist(it, added) }
+            if (targets.size < uris.size) "Téléchargé, mais une liste choisie n'existe plus." else null
+        } catch (e: Throwable) {
+            "Téléchargé, mais l'ajout à la liste a échoué : ${e.message}"
+        }
     }
 
     private fun copyToTree(folder: File, root: DocumentFile): DocumentFile {

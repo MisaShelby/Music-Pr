@@ -31,8 +31,27 @@ object PlaylistResolver {
         return Playlist(file, items)
     }
 
-    fun entryFor(file: PlaylistFile, t: LibTrack): M3uEntry =
-        M3uEntry(M3u8.relative(file.dirSegments, t.pathSegments), t.durationMs?.let { (it / 1000).toInt() }, "${t.artist} - ${t.title}")
+    /** Null when the track's path is unknown (cache from v1 before the first scan): never write a bogus line. */
+    fun entryFor(file: PlaylistFile, t: LibTrack): M3uEntry? =
+        if (t.pathSegments.isEmpty()) null
+        else M3uEntry(M3u8.relative(file.dirSegments, t.pathSegments), t.durationMs?.let { (it / 1000).toInt() }, "${t.artist} - ${t.title}")
+
+    /** Index of [path] in the current file, preferring [hint] (the index the UI showed). */
+    private fun locate(entries: List<M3uEntry>, hint: Int, path: String): Int? =
+        if (entries.getOrNull(hint)?.path == path) hint else entries.indexOfFirst { it.path == path }.takeIf { it >= 0 }
+
+    /** Removes the line the user saw, even if the file changed meanwhile; null when it is gone. */
+    fun removeAt(entries: List<M3uEntry>, index: Int, expectedPath: String): List<M3uEntry>? {
+        val i = locate(entries, index, expectedPath) ?: return null
+        return entries.filterIndexed { k, _ -> k != i }
+    }
+
+    fun move(entries: List<M3uEntry>, from: Int, to: Int, expectedPath: String): List<M3uEntry>? {
+        val i = locate(entries, from, expectedPath) ?: return null
+        val list = entries.toMutableList()
+        list.add(to.coerceIn(0, list.lastIndex), list.removeAt(i))
+        return list
+    }
 }
 
 /**
@@ -66,16 +85,24 @@ class PlaylistRepository(private val context: Context) {
         f
     }
 
-    suspend fun add(p: Playlist, tracks: List<LibTrack>) =
-        write(p.file, p.items.map { it.entry } + tracks.map { PlaylistResolver.entryFor(p.file, it) })
+    /** All edits re-read the file first, so a change made meanwhile (download, other player) is kept. */
+    private suspend fun current(file: PlaylistFile): List<M3uEntry> = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(Uri.parse(file.uri))?.use { M3u8.parse(it.readBytes().toString(Charsets.UTF_8)) }
+            ?: throw IllegalStateException("Liste illisible")
+    }
 
-    suspend fun remove(p: Playlist, index: Int) = write(p.file, p.items.map { it.entry }.filterIndexed { i, _ -> i != index })
+    suspend fun add(file: PlaylistFile, tracks: List<LibTrack>) {
+        val cur = current(file)
+        val new = tracks.mapNotNull { PlaylistResolver.entryFor(file, it) }.filter { e -> cur.none { it.path == e.path } }
+        if (new.isNotEmpty()) write(file, cur + new)
+    }
 
-    suspend fun move(p: Playlist, from: Int, to: Int) {
-        val list = p.items.map { it.entry }.toMutableList()
-        if (from !in list.indices || to !in list.indices) return
-        list.add(to, list.removeAt(from))
-        write(p.file, list)
+    suspend fun remove(file: PlaylistFile, index: Int, path: String) {
+        PlaylistResolver.removeAt(current(file), index, path)?.let { write(file, it) }
+    }
+
+    suspend fun move(file: PlaylistFile, from: Int, to: Int, path: String) {
+        PlaylistResolver.move(current(file), from, to, path)?.let { write(file, it) }
     }
 
     /** Returns the new file reference (its Uri changes with the name). */

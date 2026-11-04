@@ -120,7 +120,7 @@ fun LibraryScreen(contentPadding: PaddingValues) {
             state == LibState.NeedsFolder || state is LibState.Error -> EmptyLibrary(
                 (state as? LibState.Error)?.message ?: "Choisissez le dossier où se trouve votre musique sur le téléphone.",
             ) { pickFolder.launch(null) }
-            detail is Detail.Playlist -> PlaylistDetail(app, (detail as Detail.Playlist).uri, onGone = { detail = null }, onRenamed = { n -> detail = (detail as Detail.Playlist).copy(name = n) })
+            detail is Detail.Playlist -> PlaylistDetail(app, (detail as Detail.Playlist).uri, onGone = { detail = null }, onRenamed = { f -> detail = Detail.Playlist(f.uri, f.name) })
             detail != null -> {
                 val list = when (val d = detail!!) {
                     is Detail.Playlist -> emptyList()

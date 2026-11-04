@@ -25,6 +25,26 @@ class PlaylistResolveTest {
         assertEquals(setOf("Mix" to listOf("Playlists"), "old" to emptyList<String>()), r.playlists.map { it.name to it.dirSegments }.toSet())
     }
 
+    @Test fun `remove and move check the expected path against the current file`() {
+        val e = listOf(
+            fr.offlinetune.core.playlist.M3uEntry("a.mp3", null, null),
+            fr.offlinetune.core.playlist.M3uEntry("b.mp3", null, null),
+            fr.offlinetune.core.playlist.M3uEntry("c.mp3", null, null),
+        )
+        assertEquals(listOf("a.mp3", "c.mp3"), PlaylistResolver.removeAt(e, 1, "b.mp3")!!.map { it.path })
+        // The file changed since the UI read it (an entry was added at the top): index 1 is no longer b.mp3.
+        val changed = listOf(fr.offlinetune.core.playlist.M3uEntry("new.opus", null, null)) + e
+        assertEquals(listOf("new.opus", "a.mp3", "c.mp3"), PlaylistResolver.removeAt(changed, 1, "b.mp3")!!.map { it.path })
+        assertNull(PlaylistResolver.removeAt(e, 0, "zzz.mp3"))
+        assertEquals(listOf("b.mp3", "a.mp3", "c.mp3"), PlaylistResolver.move(e, 1, 0, "b.mp3")!!.map { it.path })
+    }
+
+    @Test fun `tracks without a known path are not written`() {
+        val file = fr.offlinetune.library.PlaylistFile("u", "Mix", listOf("Playlists"))
+        val t = LibraryScanner { null }.scanAll(tree, emptyMap()).tracks.single().copy(pathSegments = emptyList())
+        assertNull(PlaylistResolver.entryFor(file, t))
+    }
+
     @Test fun `entries resolve to library tracks, missing ones stay as null`() {
         val r = LibraryScanner { null }.scanAll(tree, emptyMap())
         val file = r.playlists.first { it.name == "Mix" }

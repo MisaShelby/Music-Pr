@@ -47,10 +47,20 @@ import fr.offlinetune.ui.CoverImage
 import fr.offlinetune.ui.Covers
 import fr.offlinetune.ui.player.NewPlaylistDialog
 import fr.offlinetune.ui.theme.Ink
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+
+/** Playlist I/O can fail (SD card removed, permission revoked, name taken): show it, never crash. */
+fun CoroutineScope.safely(context: android.content.Context, block: suspend () -> Unit) = launch {
+    try { block() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) {
+        val msg = (e as? fr.offlinetune.core.model.OfflineTuneException)?.userMessage() ?: e.message ?: "Erreur"
+        android.widget.Toast.makeText(context, "Liste : $msg", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
 
 @Composable
 fun PlaylistsTab(app: App, onOpen: (Playlist) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val playlists by app.library.playlists.collectAsState()
     val scope = rememberCoroutineScope()
     var creating by remember { mutableStateOf(false) }
@@ -89,13 +99,14 @@ fun PlaylistsTab(app: App, onOpen: (Playlist) -> Unit) {
     if (creating) {
         NewPlaylistDialog(onDismiss = { creating = false }) { name ->
             creating = false
-            scope.launch { app.library.createPlaylist(name) }
+            scope.safely(context) { app.library.createPlaylist(name) }
         }
     }
 }
 
 @Composable
-fun PlaylistDetail(app: App, uri: String, onGone: () -> Unit, onRenamed: (String) -> Unit) {
+fun PlaylistDetail(app: App, uri: String, onGone: () -> Unit, onRenamed: (fr.offlinetune.library.PlaylistFile) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val playlists by app.library.playlists.collectAsState()
     val current by app.player.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -143,9 +154,9 @@ fun PlaylistDetail(app: App, uri: String, onGone: () -> Unit, onRenamed: (String
                         )
                         Text(t?.artist ?: "Fichier introuvable", maxLines = 1, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
                     }
-                    IconButton(onClick = { scope.launch { app.library.movePlaylistItem(p, i, i - 1) } }, enabled = i > 0) { Icon(Icons.Rounded.KeyboardArrowUp, "Monter") }
-                    IconButton(onClick = { scope.launch { app.library.movePlaylistItem(p, i, i + 1) } }, enabled = i < p.items.lastIndex) { Icon(Icons.Rounded.KeyboardArrowDown, "Descendre") }
-                    IconButton(onClick = { scope.launch { app.library.removeFromPlaylist(p, i) } }) { Icon(Icons.Rounded.Close, "Retirer de la liste") }
+                    IconButton(onClick = { scope.safely(context) { app.library.movePlaylistItem(p, i, i - 1) } }, enabled = i > 0) { Icon(Icons.Rounded.KeyboardArrowUp, "Monter") }
+                    IconButton(onClick = { scope.safely(context) { app.library.movePlaylistItem(p, i, i + 1) } }, enabled = i < p.items.lastIndex) { Icon(Icons.Rounded.KeyboardArrowDown, "Descendre") }
+                    IconButton(onClick = { scope.safely(context) { app.library.removeFromPlaylist(p, i) } }) { Icon(Icons.Rounded.Close, "Retirer de la liste") }
                 }
             }
         }
@@ -154,7 +165,7 @@ fun PlaylistDetail(app: App, uri: String, onGone: () -> Unit, onRenamed: (String
     if (renaming) {
         NewPlaylistDialog(title = "Renommer la liste", initial = p.name, confirm = "Renommer", onDismiss = { renaming = false }) { name ->
             renaming = false
-            scope.launch { app.library.renamePlaylist(p, name); onRenamed(name) }
+            scope.safely(context) { onRenamed(app.library.renamePlaylist(p, name)) }
         }
     }
     if (deleting) {
@@ -162,7 +173,7 @@ fun PlaylistDetail(app: App, uri: String, onGone: () -> Unit, onRenamed: (String
             onDismissRequest = { deleting = false },
             title = { Text("Supprimer « ${p.name} » ?") },
             text = { Text("La liste et son fichier .m3u8 seront supprimés. Les morceaux restent sur le téléphone.") },
-            confirmButton = { TextButton(onClick = { deleting = false; scope.launch { app.library.deletePlaylist(p); onGone() } }) { Text("Supprimer") } },
+            confirmButton = { TextButton(onClick = { deleting = false; scope.safely(context) { app.library.deletePlaylist(p); onGone() } }) { Text("Supprimer") } },
             dismissButton = { TextButton(onClick = { deleting = false }) { Text("Annuler") } },
         )
     }

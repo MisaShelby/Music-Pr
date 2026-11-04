@@ -102,8 +102,12 @@ class LibraryRepository(private val context: Context, private val settings: Sett
                 scanner.scanAll(root, _tracks.value.associateBy { it.uri })
             }
             publish(result.tracks)
-            playlistFiles = result.playlists
-            reloadPlaylists()
+            playlistLock.withLock {
+                // Keep lists created/renamed while the scan was running.
+                val scanned = result.playlists.map { it.uri }.toSet()
+                playlistFiles = result.playlists + playlistFiles.filter { it.uri !in scanned && it.dirSegments == listOf(fr.offlinetune.playlist.PlaylistRepository.DIR) }
+                reloadLocked()
+            }
             _state.value = LibState.Idle
         } catch (e: SecurityException) {
             _state.value = LibState.NeedsFolder
@@ -124,40 +128,45 @@ class LibraryRepository(private val context: Context, private val settings: Sett
         added
     }
 
-    // --- playlists (.m3u8 files are the truth) ---
+    // --- playlists (.m3u8 files are the truth); every read-modify-write runs under [playlistLock] ---
 
-    suspend fun reloadPlaylists() {
+    private val playlistLock = Mutex()
+
+    suspend fun reloadPlaylists() = playlistLock.withLock { reloadLocked() }
+
+    private suspend fun reloadLocked() {
         val tracks = _tracks.value
         _playlists.value = playlistFiles.map { playlistRepo.read(it, tracks) }.sortedBy { it.name.lowercase() }
     }
 
+    private suspend fun <T> edit(block: suspend () -> T): T = playlistLock.withLock { block().also { reloadLocked() } }
+
     suspend fun createPlaylist(name: String): fr.offlinetune.playlist.Playlist? {
         val tree = grantedTree(settings.current().libraryTreeUri) ?: return null
-        val f = playlistRepo.create(tree, name)
-        playlistFiles = playlistFiles + f
-        reloadPlaylists()
+        val f = edit { playlistRepo.create(tree, name).also { playlistFiles = playlistFiles + it } }
         return _playlists.value.firstOrNull { it.file.uri == f.uri }
     }
 
-    suspend fun addToPlaylist(p: fr.offlinetune.playlist.Playlist, tracks: List<LibTrack>) {
-        val fresh = playlistRepo.read(p.file, _tracks.value)
-        playlistRepo.add(fresh, tracks.filter { t -> fresh.items.none { it.track?.uri == t.uri } })
-        reloadPlaylists()
+    suspend fun addToPlaylist(p: fr.offlinetune.playlist.Playlist, tracks: List<LibTrack>) = edit { playlistRepo.add(p.file, tracks) }
+
+    suspend fun removeFromPlaylist(p: fr.offlinetune.playlist.Playlist, index: Int) = edit {
+        p.items.getOrNull(index)?.let { playlistRepo.remove(p.file, index, it.entry.path) }
     }
 
-    suspend fun removeFromPlaylist(p: fr.offlinetune.playlist.Playlist, index: Int) { playlistRepo.remove(p, index); reloadPlaylists() }
-    suspend fun movePlaylistItem(p: fr.offlinetune.playlist.Playlist, from: Int, to: Int) { playlistRepo.move(p, from, to); reloadPlaylists() }
+    suspend fun movePlaylistItem(p: fr.offlinetune.playlist.Playlist, from: Int, to: Int) = edit {
+        p.items.getOrNull(from)?.let { playlistRepo.move(p.file, from, to, it.entry.path) }
+    }
 
-    suspend fun renamePlaylist(p: fr.offlinetune.playlist.Playlist, name: String) {
+    /** Returns the renamed file (its Uri changes). */
+    suspend fun renamePlaylist(p: fr.offlinetune.playlist.Playlist, name: String): PlaylistFile = edit {
         val nf = playlistRepo.rename(p, name)
         playlistFiles = playlistFiles.map { if (it.uri == p.file.uri) nf else it }
-        reloadPlaylists()
+        nf
     }
 
-    suspend fun deletePlaylist(p: fr.offlinetune.playlist.Playlist) {
+    suspend fun deletePlaylist(p: fr.offlinetune.playlist.Playlist) = edit {
         playlistRepo.delete(p)
         playlistFiles = playlistFiles.filterNot { it.uri == p.file.uri }
-        reloadPlaylists()
     }
 
     suspend fun readText(uri: String): String? = withContext(Dispatchers.IO) {

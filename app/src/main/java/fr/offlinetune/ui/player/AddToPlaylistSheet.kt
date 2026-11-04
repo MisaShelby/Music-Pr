@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 fun AddToPlaylistSheet(app: App, tracks: List<LibTrack>, onDone: (String?) -> Unit) {
     val playlists by app.library.playlists.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var naming by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = { onDone(null) }, containerColor = Ink.Surface) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) {
@@ -56,7 +57,10 @@ fun AddToPlaylistSheet(app: App, tracks: List<LibTrack>, onDone: (String?) -> Un
                 val already = tracks.isNotEmpty() && tracks.all { t -> p.items.any { it.track?.uri == t.uri } }
                 Row(
                     Modifier.fillMaxWidth().clickable(enabled = !already) {
-                        scope.launch { app.library.addToPlaylist(p, tracks); onDone("Ajouté à « ${p.name} »") }
+                        scope.launch {
+                            val r = runCatching { app.library.addToPlaylist(p, tracks) }
+                            onDone(if (r.isSuccess) "Ajouté à « ${p.name} »" else "Ajout impossible : ${r.exceptionOrNull()?.message}")
+                        }
                     }.padding(horizontal = 20.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -76,11 +80,12 @@ fun AddToPlaylistSheet(app: App, tracks: List<LibTrack>, onDone: (String?) -> Un
         NewPlaylistDialog(onDismiss = { naming = false }) { name ->
             naming = false
             scope.launch {
-                val p = app.library.createPlaylist(name)
-                if (p == null) onDone("Choisissez d'abord le dossier de musique") else {
+                val r = runCatching {
+                    val p = app.library.createPlaylist(name) ?: return@runCatching "Choisissez d'abord le dossier de musique"
                     if (tracks.isNotEmpty()) app.library.addToPlaylist(p, tracks)
-                    onDone("Ajouté à « ${p.name} »")
+                    "Ajouté à « ${p.name} »"
                 }
+                onDone(r.getOrElse { "Création impossible : ${it.message}" })
             }
         }
     }
