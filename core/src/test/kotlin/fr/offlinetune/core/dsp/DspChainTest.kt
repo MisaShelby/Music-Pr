@@ -102,4 +102,16 @@ class DspChainTest {
         assertEquals(setOf("Plat", "Rock", "Pop", "Jazz", "Classique", "Électro", "Hip-Hop", "Bass boost", "Voix", "Acoustique"), Presets.builtIn.keys)
         Presets.builtIn.values.forEach { v -> assertEquals(10, v.size); assertTrue(v.all { it in -12f..12f }) }
     }
+
+    @Test fun `tone switch off ignores bass and treble but keeps their values`() {
+        val s = DspSettings(bassDb = 9f, trebleDb = 9f, toneEnabled = false, limiter = false)
+        assertEquals(0.0, gainDb(s, 30.0), 0.05)
+        assertEquals(9f, s.bassDb)
+    }
+
+    @Test fun `eq switch off ignores the bands only`() {
+        val s = DspSettings(bands = FloatArray(10) { 6f }, eqEnabled = false, bassDb = 6f, limiter = false)
+        assertEquals(0.0, gainDb(s, 1000.0), 0.3)
+        assertEquals(6.0, gainDb(s, 30.0), 1.0)
+    }
 }

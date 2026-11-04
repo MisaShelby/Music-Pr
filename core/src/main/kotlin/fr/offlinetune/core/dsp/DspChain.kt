@@ -18,12 +18,17 @@ data class DspSettings(
     val balance: Float = 0f,
     val mono: Boolean = false,
     val limiter: Boolean = true,
+    /** « Égal. » switch: bands ignored when off (values kept). */
+    val eqEnabled: Boolean = true,
+    /** « Ton. » switch: bass/treble ignored when off (values kept). */
+    val toneEnabled: Boolean = true,
 ) {
     override fun equals(other: Any?) = other is DspSettings && enabled == other.enabled && preampDb == other.preampDb &&
         bands.contentEquals(other.bands) && bassDb == other.bassDb && trebleDb == other.trebleDb &&
-        balance == other.balance && mono == other.mono && limiter == other.limiter
+        balance == other.balance && mono == other.mono && limiter == other.limiter &&
+        eqEnabled == other.eqEnabled && toneEnabled == other.toneEnabled
 
-    override fun hashCode() = listOf(enabled, preampDb, bands.contentHashCode(), bassDb, trebleDb, balance, mono, limiter).hashCode()
+    override fun hashCode() = listOf(enabled, preampDb, bands.contentHashCode(), bassDb, trebleDb, balance, mono, limiter, eqEnabled, toneEnabled).hashCode()
 
     companion object {
         val FREQUENCIES = doubleArrayOf(31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0)
@@ -53,10 +58,10 @@ class DspChain {
         val list = mutableListOf<Biquad>()
         DspSettings.FREQUENCIES.forEachIndexed { i, f ->
             val g = s.bands.getOrElse(i) { 0f }.coerceIn(-DspSettings.MAX_DB, DspSettings.MAX_DB)
-            if (g != 0f && f < nyquistLimit) list += filters[i].apply { set(Biquad.Type.PEAK, f, g.toDouble(), 1.41, sampleRate) }
+            if (s.eqEnabled && g != 0f && f < nyquistLimit) list += filters[i].apply { set(Biquad.Type.PEAK, f, g.toDouble(), 1.41, sampleRate) }
         }
-        if (s.bassDb != 0f) list += filters[10].apply { set(Biquad.Type.LOW_SHELF, 100.0, s.bassDb.toDouble(), 0.707, sampleRate) }
-        if (s.trebleDb != 0f && 10000.0 < nyquistLimit) list += filters[11].apply { set(Biquad.Type.HIGH_SHELF, 10000.0, s.trebleDb.toDouble(), 0.707, sampleRate) }
+        if (s.toneEnabled && s.bassDb != 0f) list += filters[10].apply { set(Biquad.Type.LOW_SHELF, 100.0, s.bassDb.toDouble(), 0.707, sampleRate) }
+        if (s.toneEnabled && s.trebleDb != 0f && 10000.0 < nyquistLimit) list += filters[11].apply { set(Biquad.Type.HIGH_SHELF, 10000.0, s.trebleDb.toDouble(), 0.707, sampleRate) }
         active = list
         preamp = 10.0.pow(s.preampDb / 20.0)
         val b = s.balance.coerceIn(-1f, 1f).toDouble()
