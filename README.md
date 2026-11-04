@@ -16,6 +16,12 @@ Lecteur et téléchargeur de musique hors ligne pour Android, sans publicité ni
     └── cover.jpg
 ```
 
+- **Recherche sur plusieurs plateformes** : tapez « artiste titre » ; les résultats viennent de YouTube Music, SoundCloud,
+  Deezer et Apple Music (et de Spotify / Tidal si vous ajoutez vos clés, voir plus bas). Les puces filtrent par plateforme,
+  les pastilles montrent où la chanson existe. En touchant une chanson, vous voyez ses sources :
+  téléchargeables (YouTube Music, SoundCloud) avec la qualité réelle, et les plateformes où l'écouter dans leur appli.
+- **Listes de lecture** : fichiers `.m3u8` dans `Playlists/` de votre dossier de musique (lus aussi par Poweramp et VLC).
+  Ajout par appui long dans la bibliothèque, depuis l'écran de lecture ou au téléchargement.
 - Le lecteur lit les fichiers du téléphone : égaliseur 10 bandes, préréglages, basses/aigus, balance, mono, limiteur, fondu enchaîné, fondu à la pause, paroles synchronisées.
 
 ## Installer
@@ -52,6 +58,17 @@ YouTube modifie régulièrement son site. Si l'app affiche « YouTube a changé,
 1. Regardez la dernière version de NewPipeExtractor : <https://github.com/TeamNewPipe/NewPipeExtractor/releases>
 2. Remplacez la valeur de `newpipe` dans `gradle/libs.versions.toml` (ex. `newpipe = "v0.26.6"`).
 3. Lancez `./build.sh` puis réinstallez `OfflineTune.apk`.
+
+## Clés Spotify et Tidal (facultatif)
+
+Spotify et Tidal n'ont pas de recherche publique sans compte. Pour les ajouter aux résultats :
+
+1. **Spotify** : connectez-vous sur <https://developer.spotify.com/dashboard>, « Create app » (nom libre, Redirect URI
+   `http://127.0.0.1/` — non utilisée), cochez « Web API », puis copiez le *Client ID* et le *Client Secret*.
+2. **Tidal** : sur <https://developer.tidal.com/dashboard>, créez une application et copiez *Client ID* et *Client Secret*.
+3. Dans l'app : **Réglages › Plateformes**, collez les deux valeurs.
+
+Ces clés servent uniquement à la recherche et aux infos ; l'audio de Spotify et Tidal n'est jamais téléchargé.
 
 ## Bon à savoir
 
