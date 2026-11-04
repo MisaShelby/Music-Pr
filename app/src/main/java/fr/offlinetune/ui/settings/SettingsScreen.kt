@@ -125,7 +125,9 @@ fun SettingsScreen(padding: PaddingValues) {
 
 @Composable
 private fun KeyField(label: String, value: String?, secret: Boolean, onChange: (String?) -> Unit) {
-    var text by androidx.compose.runtime.saveable.rememberSaveable(value == null) { androidx.compose.runtime.mutableStateOf(value ?: "") }
+    // Local text is the source of truth while typing (keying it on the stored value dropped the first character).
+    var text by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(value ?: "") }
+    androidx.compose.runtime.LaunchedEffect(value) { if (text.isEmpty() && !value.isNullOrEmpty()) text = value }
     androidx.compose.material3.OutlinedTextField(
         value = text,
         onValueChange = { text = it; onChange(it.trim().ifEmpty { null }) },
