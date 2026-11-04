@@ -46,6 +46,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,6 +84,16 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
     val input by model.input.collectAsState()
     val downloads by app.downloads.items.collectAsState()
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val recognize by app.recognizer.state.collectAsState()
+    val identified by app.recognizer.identified.collectAsState()
+    val pendingClips by app.recognizer.pending.collectAsState()
+    val micPermission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) app.recognizer.listen()
+    }
+    // A song just identified: search it on every platform right away.
+    LaunchedEffect(recognize) {
+        (recognize as? fr.offlinetune.recognize.RecognizeState.Found)?.let { model.submit(it.recognition.query); app.recognizer.dismiss() }
+    }
 
     LaunchedEffect(sharedText) {
         if (sharedText != null) { model.submit(sharedText); onSharedConsumed() }
@@ -141,6 +154,17 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
                     ) { Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Coller", style = MaterialTheme.typography.labelMedium) }
                 }
                 Spacer(Modifier.width(8.dp))
+                fr.offlinetune.ui.glass.GlassSurface(shape = RoundedCornerShape(50)) {
+                    Row(
+                        Modifier.clickable {
+                            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
+                                android.content.pm.PackageManager.PERMISSION_GRANTED) app.recognizer.listen()
+                            else micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }.padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { Icon(Icons.Rounded.Mic, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Identifier", style = MaterialTheme.typography.labelMedium) }
+                }
+                Spacer(Modifier.width(8.dp))
                 androidx.compose.foundation.layout.Box(
                     Modifier.clip(RoundedCornerShape(50))
                         .background(if (input.isNotBlank()) androidx.compose.ui.graphics.Color.White else Ink.SurfaceHigh)
@@ -150,6 +174,11 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
             }
         }
 
+        if (recognize !is fr.offlinetune.recognize.RecognizeState.Idle) item { RecognizeCard(recognize) { app.recognizer.dismiss() } }
+        if (pendingClips > 0) item {
+            Text("$pendingClips son(s) enregistré(s) : identification dès que le téléphone sera connecté.",
+                color = Ink.Muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+        }
         when (current) {
             is DlPhase.Loading -> item {
                 Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -166,6 +195,21 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
             }
         }
 
+        if (identified.isNotEmpty() && current !is DlPhase.Federated) {
+            item { Text("Sons identifiés", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 4.dp)) }
+            items(identified.take(10), key = { it.recordedAt }) { idf ->
+                Row(Modifier.fillMaxWidth().clickable { model.submit(idf.recognition.query) }.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Mic, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(idf.recognition.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(idf.recognition.artist, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted, maxLines = 1)
+                    }
+                    TextButton(onClick = { model.submit(idf.recognition.query) }) { Text("Rechercher") }
+                    IconButton(onClick = { app.recognizer.forget(idf) }) { Icon(Icons.Rounded.Close, "Retirer") }
+                }
+            }
+        }
         if (downloads.isNotEmpty()) {
             item {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -179,6 +223,40 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
         }
     }
 }
+
+@Composable
+private fun RecognizeCard(state: fr.offlinetune.recognize.RecognizeState, onClose: () -> Unit) {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "mic")
+    val pulse by transition.animateFloat(0.85f, 1.15f, androidx.compose.animation.core.infiniteRepeatable(
+        androidx.compose.animation.core.tween(700), androidx.compose.animation.core.RepeatMode.Reverse), label = "pulse")
+    fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), RoundedCornerShape(22.dp), strong = true) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            val listening = state is fr.offlinetune.recognize.RecognizeState.Listening
+            androidx.compose.foundation.layout.Box(
+                Modifier.size(52.dp).graphicsLayerScale(if (listening) pulse else 1f).clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Rounded.Mic, null, tint = MaterialTheme.colorScheme.onPrimary) }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                val (title, sub) = when (state) {
+                    is fr.offlinetune.recognize.RecognizeState.Listening -> "J'écoute…" to "Approchez le téléphone de la source (${state.secondsLeft} s)"
+                    fr.offlinetune.recognize.RecognizeState.Identifying -> "Identification…" to "Recherche du morceau"
+                    fr.offlinetune.recognize.RecognizeState.NotFound -> "Morceau non reconnu" to "Réessayez plus près de la source, pendant un passage chanté"
+                    fr.offlinetune.recognize.RecognizeState.SavedOffline -> "Enregistré" to "Pas de connexion : le son sera identifié automatiquement dès le retour du réseau"
+                    is fr.offlinetune.recognize.RecognizeState.Error -> "Erreur" to state.message
+                    is fr.offlinetune.recognize.RecognizeState.Found -> "Trouvé" to "${state.recognition.artist} — ${state.recognition.title}"
+                    fr.offlinetune.recognize.RecognizeState.Idle -> "" to ""
+                }
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(sub, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
+            }
+            if (!listening && state !is fr.offlinetune.recognize.RecognizeState.Identifying) IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, "Fermer") }
+        }
+    }
+}
+
+private fun Modifier.graphicsLayerScale(s: Float) = this.then(androidx.compose.ui.Modifier.graphicsLayer(scaleX = s, scaleY = s))
 
 @Composable
 private fun DownloadRow(item: DownloadItem, onRetry: () -> Unit) {

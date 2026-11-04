@@ -123,6 +123,9 @@ fun SettingsScreen(padding: PaddingValues) {
         } else {
             Clickable("Connecté à Spotify", "Toucher pour se déconnecter") { update { it.copy(spotifyTokens = null) } }
         }
+        KeyField("AudD — clé (Identifier un son)", s.auddToken, secret = true) { v -> update { it.copy(auddToken = v) } }
+        Text("Clé gratuite sur dashboard.audd.io ; elle sert uniquement à reconnaître un son enregistré par le micro.",
+            style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
         KeyField("Tidal — Client ID", s.tidalId, secret = false) { v -> update { it.copy(tidalId = v) } }
         KeyField("Tidal — Client Secret", s.tidalSecret, secret = true) { v -> update { it.copy(tidalSecret = v) } }
 

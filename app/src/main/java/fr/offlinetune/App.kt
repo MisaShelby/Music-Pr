@@ -30,9 +30,12 @@ class App : Application() {
         )
     }
 
+    val recognizer by lazy { fr.offlinetune.recognize.Recognizer(this, settings) }
+
     override fun onCreate() {
         super.onCreate()
         settings = SettingsStore(this)
+        recognizer.start()
         appScope.launch { settings.flow.collect { latest = it } }
     }
 }

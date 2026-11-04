@@ -21,6 +21,8 @@ data class AppSettings(
     val crossfadeOnSkip: Boolean = false,
     /** « Mix automatique »: transition point and length chosen from the sound (see AutoMix). */
     val autoMix: Boolean = false,
+    /** AudD token for « Identifier un son » (the user's own free key). */
+    val auddToken: String? = null,
     val pauseFade: Boolean = true,
     val autoLyrics: Boolean = true,
     val dsp: DspSettings = DspSettings(),
