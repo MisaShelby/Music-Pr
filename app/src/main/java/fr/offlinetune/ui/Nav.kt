@@ -12,12 +12,8 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,8 +24,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import fr.offlinetune.App
+import fr.offlinetune.ui.glass.AppBackdrop
+import fr.offlinetune.ui.glass.GlassNavBar
+import fr.offlinetune.ui.glass.NavItem
 import fr.offlinetune.ui.download.DownloadScreen
 import fr.offlinetune.ui.library.LibraryScreen
 import fr.offlinetune.ui.player.MiniPlayer
@@ -37,13 +36,11 @@ import fr.offlinetune.ui.player.PlayerScreen
 import fr.offlinetune.ui.settings.SettingsScreen
 import fr.offlinetune.ui.sound.SoundScreen
 
-private data class Dest(val label: String, val icon: ImageVector)
-
 private val DESTS = listOf(
-    Dest("Bibliothèque", Icons.Rounded.LibraryMusic),
-    Dest("Télécharger", Icons.Rounded.Download),
-    Dest("Son", Icons.Rounded.Equalizer),
-    Dest("Réglages", Icons.Rounded.Settings),
+    NavItem("Bibliothèque", Icons.Rounded.LibraryMusic),
+    NavItem("Télécharger", Icons.Rounded.Download),
+    NavItem("Son", Icons.Rounded.Equalizer),
+    NavItem("Réglages", Icons.Rounded.Settings),
 )
 
 /** Cover key of the playing item: cover.jpg from the library, else the session artwork, else the embedded picture. */
@@ -71,22 +68,15 @@ fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
     }
     BackHandler(enabled = playerOpen) { playerOpen = false }
 
-    Box(Modifier.fillMaxSize()) {
+    AppBackdrop(coverKey, MaterialTheme.colorScheme.primary) {
         Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = Color.Transparent,
             bottomBar = {
                 Column {
                     if (state.mediaId != null) {
                         MiniPlayer(state, coverKey, onOpen = { playerOpen = true }, onToggle = { app.player.togglePlay() }, onNext = { app.player.next() })
                     }
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceVariant) {
-                        DESTS.forEachIndexed { i, d ->
-                            NavigationBarItem(
-                                selected = tab == i, onClick = { tab = i },
-                                icon = { Icon(d.icon, null) }, label = { Text(d.label) },
-                            )
-                        }
-                    }
+                    GlassNavBar(DESTS, tab) { tab = it }
                 }
             },
         ) { padding ->

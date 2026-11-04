@@ -34,7 +34,7 @@ import fr.offlinetune.ui.theme.Ink
 fun ResultsList(results: InputResult.Results, onOpen: (SearchHit) -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(if (results.deezer.isEmpty()) 1 else 0) }
     Column {
-        PrimaryTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.background) {
+        PrimaryTabRow(selectedTabIndex = tab, containerColor = androidx.compose.ui.graphics.Color.Transparent) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Titres (${results.deezer.size})") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("YouTube (${results.youtube.size})") })
         }

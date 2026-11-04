@@ -28,15 +28,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import fr.offlinetune.playback.PlayerUiState
 import fr.offlinetune.ui.CoverImage
+import fr.offlinetune.ui.glass.Glass
+import fr.offlinetune.ui.glass.GlassSurface
 import fr.offlinetune.ui.theme.Ink
 
 @Composable
 fun MiniPlayer(state: PlayerUiState, coverKey: String?, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit) {
     val progress = if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs else 0f
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(16.dp)).background(Ink.SurfaceHigh).clickable(onClick = onOpen),
-    ) {
+    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 6.dp), RoundedCornerShape(22.dp), strong = true) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             CoverImage(coverKey, RoundedCornerShape(10.dp), Modifier.size(44.dp), size = 128)
             Spacer(Modifier.width(12.dp))
@@ -49,8 +49,9 @@ fun MiniPlayer(state: PlayerUiState, coverKey: String?, onOpen: () -> Unit, onTo
             }
             IconButton(onClick = onNext) { Icon(Icons.Rounded.SkipNext, "Suivant") }
         }
-        Box(Modifier.fillMaxWidth().height(2.dp).background(Ink.Surface)) {
-            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(2.dp).background(MaterialTheme.colorScheme.primary))
+        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 6.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Glass.Fill)) {
+            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp).background(MaterialTheme.colorScheme.primary))
         }
+    }
     }
 }

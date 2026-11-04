@@ -140,7 +140,7 @@ fun LibraryScreen(contentPadding: PaddingValues) {
                         it.title.lowercase().contains(q) || it.artist.lowercase().contains(q) || (it.album?.lowercase()?.contains(q) == true)
                     }
                 }
-                PrimaryTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.background) {
+                PrimaryTabRow(selectedTabIndex = tab, containerColor = androidx.compose.ui.graphics.Color.Transparent) {
                     listOf("Titres", "Albums", "Artistes").forEachIndexed { i, t ->
                         Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) })
                     }
