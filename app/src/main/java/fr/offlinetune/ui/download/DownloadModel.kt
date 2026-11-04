@@ -30,6 +30,14 @@ data class SheetEdit(
     val error: String? = null,
 )
 
+/** Applies a background job's result to the sheet the user is looking at now, keeping what they typed meanwhile. */
+object SheetMerge {
+    fun apply(current: SheetEdit?, started: SheetEdit, patch: (Sheet) -> Sheet): SheetEdit? {
+        if (current == null || current.sheet.info != started.sheet.info || current.sheet.origin != started.sheet.origin) return current
+        return current.copy(sheet = patch(current.sheet), busy = null, error = null)
+    }
+}
+
 sealed interface DlPhase {
     data object Idle : DlPhase
     data class Loading(val what: String) : DlPhase
@@ -54,7 +62,7 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
         input.value = text.trim()
         launch(DlPhase.Loading("Recherche des infos du morceau…")) {
             when (val r = service.open(text)) {
-                is InputResult.Ready -> DlPhase.Editing(SheetEdit(r.sheet, r.sheet.info, includeLyrics = r.sheet.lyrics != null), null)
+                is InputResult.Ready -> DlPhase.Editing(SheetEdit(r.sheet, r.sheet.info), null)
                 is InputResult.Results ->
                     if (r.deezer.isEmpty() && r.youtube.isEmpty()) DlPhase.Error("Aucun résultat. Essayez d'autres mots ou collez un lien.")
                     else DlPhase.Results(r)
@@ -66,28 +74,32 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
         val back = (phase.value as? DlPhase.Results)?.results
         launch(DlPhase.Loading("Préparation de la fiche…")) {
             val sheet = service.openHit(hit)
-            DlPhase.Editing(SheetEdit(sheet, sheet.info, includeLyrics = sheet.lyrics != null), back)
+            DlPhase.Editing(SheetEdit(sheet, sheet.info), back)
         }
     }
 
     fun backToResults() {
+        sheetJob?.cancel()
         val e = phase.value as? DlPhase.Editing ?: return
         _phase.value = e.back?.let { DlPhase.Results(it) } ?: DlPhase.Idle
     }
 
-    fun reset() { job?.cancel(); _phase.value = DlPhase.Idle; input.value = "" }
+    fun reset() { job?.cancel(); sheetJob?.cancel(); _phase.value = DlPhase.Idle; input.value = "" }
 
     fun edit(change: (TrackInfo) -> TrackInfo) = updateEdit { it.copy(edited = change(it.edited)) }
     fun setIncludeLyrics(v: Boolean) = updateEdit { it.copy(includeLyrics = v) }
     fun setCover(bytes: ByteArray) = updateEdit { it.copy(sheet = it.sheet.copy(coverBytes = bytes)) }
 
     fun changeSource(url: String) = sheetJob("Vérification de la source…") { e ->
-        e.copy(sheet = service.withSource(e.sheet, url))
+        val r = service.withSource(e.sheet, url)
+        val patch: (Sheet) -> Sheet = { it.copy(source = r.source, format = r.format, warnings = r.warnings) }
+        patch
     }
 
     fun refreshLyrics() = sheetJob("Recherche des paroles…") { e ->
-        val s = service.refreshLyrics(e.sheet, e.edited)
-        e.copy(sheet = s, includeLyrics = s.lyrics != null)
+        val r = service.refreshLyrics(e.sheet, e.edited)
+        val patch: (Sheet) -> Sheet = { it.copy(lyrics = r.lyrics) }
+        patch
     }
 
     /** Queues the download and goes back to an empty field; progress shows in the list below. */
@@ -102,22 +114,27 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
         if (p is DlPhase.Editing) p.copy(edit = change(p.edit)) else p
     }
 
-    private fun sheetJob(busy: String, block: suspend (SheetEdit) -> SheetEdit) {
+    private var sheetJob: Job? = null
+
+    /** Runs [block] on the sheet as it is now; its result is merged into whatever the user has typed since. */
+    private fun sheetJob(busy: String, block: suspend (SheetEdit) -> (Sheet) -> Sheet) {
         val start = (phase.value as? DlPhase.Editing)?.edit ?: return
         updateEdit { it.copy(busy = busy, error = null) }
-        scope.launch {
+        sheetJob?.cancel()
+        sheetJob = scope.launch {
             try {
-                val cur = (phase.value as? DlPhase.Editing)?.edit ?: start
-                val done = block(cur)
-                updateEdit { done.copy(busy = null, error = null) }
+                val patch = block(start)
+                _phase.update { p -> if (p is DlPhase.Editing) p.copy(edit = SheetMerge.apply(p.edit, start, patch)!!) else p }
             } catch (t: Throwable) {
-                updateEdit { it.copy(busy = null, error = t.userMessage()) }
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                updateEdit { if (it.sheet.info == start.sheet.info) it.copy(busy = null, error = t.userMessage()) else it }
             }
         }
     }
 
     private fun launch(loading: DlPhase, block: suspend () -> DlPhase) {
         job?.cancel()
+        sheetJob?.cancel()
         _phase.value = loading
         job = scope.launch {
             _phase.value = try { block() } catch (t: Throwable) {
