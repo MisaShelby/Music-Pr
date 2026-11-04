@@ -94,8 +94,15 @@ class CrossfadeController(private val context: Context) {
             }
             Xf.Idle -> {
                 val st = settings
-                if (!st.crossfadeEnabled || st.crossfadeSec == 0 || !main.isPlaying) return
-                if (main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return
+                if (!main.isPlaying || main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return
+                if (st.autoMix) {
+                    val plan = autoPlan()
+                    if (plan != null && main.currentPosition >= plan.startAtMs - Fades.PREPARE_LEAD_MS && main.currentPosition < plan.startAtMs + plan.fadeMs) {
+                        prepare(next = true, manual = false)
+                    }
+                    return
+                }
+                if (!st.crossfadeEnabled || st.crossfadeSec == 0) return
                 if (Fades.shouldPrepareCrossfade(main.duration, main.currentPosition, st.crossfadeSec * 1000L)) {
                     prepare(next = true, manual = false)
                 }
@@ -136,8 +143,39 @@ class CrossfadeController(private val context: Context) {
         a.prepare()
     }
 
+    // --- Mix automatique: analyse the end of the current track and the start of the next one ---
+    private var planKey: String? = null
+    @Volatile private var plan: fr.offlinetune.core.playback.MixPlan? = null
+    private val analysis = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    /** Plan for (current, next), computed in the background once the current track's duration is known. */
+    private fun autoPlan(): fr.offlinetune.core.playback.MixPlan? {
+        val cur = main.currentMediaItem ?: return null
+        val nextIndex = main.nextMediaItemIndex.takeIf { it >= 0 } ?: return null
+        val next = main.getMediaItemAt(nextIndex)
+        val dur = main.duration.takeIf { it > 0 } ?: return null
+        val key = cur.mediaId + "|" + next.mediaId + "|" + dur
+        if (key != planKey) {
+            planKey = key; plan = null
+            val manual = settings.crossfadeSec.coerceAtLeast(2) * 1000L
+            val tailStart = (dur - 40_000).coerceAtLeast(0)
+            analysis.execute {
+                val out = AudioAnalyzer.envelope(context, cur.mediaId, tailStart, dur) ?: FloatArray(0)
+                val inn = AudioAnalyzer.envelope(context, next.mediaId, 0, 15_000) ?: FloatArray(0)
+                val p = fr.offlinetune.core.playback.AutoMix.plan(out, tailStart, dur, inn, manual)
+                handler.post { if (planKey == key) plan = p }
+            }
+        }
+        return plan
+    }
+
     private fun go(p: Xf.Preparing) {
-        val fadeMs = if (p.manual) settings.crossfadeSec * 1000L else (main.duration - main.currentPosition)
+        val auto = if (!p.manual && settings.autoMix) plan else null
+        val fadeMs = when {
+            p.manual -> settings.crossfadeSec * 1000L
+            auto != null -> minOf(auto.fadeMs, main.duration - main.currentPosition)
+            else -> main.duration - main.currentPosition
+        }
         if (fadeMs < 300) { cancelCrossfade(); return }
         auxOutGain = 1f
         xf = Xf.Fading(p.aux, SystemClock.elapsedRealtime(), fadeMs)
@@ -145,7 +183,11 @@ class CrossfadeController(private val context: Context) {
         p.aux.play()
         xfadeGain = 0f
         applyVolume()
-        if (p.next) main.seekToNextMediaItem() else main.seekToPreviousMediaItem()
+        if (p.next) {
+            // Mix automatique: the next track starts after its leading silence.
+            if (auto != null && auto.skipInMs > 0 && main.nextMediaItemIndex >= 0) main.seekTo(main.nextMediaItemIndex, auto.skipInMs)
+            else main.seekToNextMediaItem()
+        } else main.seekToPreviousMediaItem()
     }
 
     private fun cancelCrossfade() {
@@ -197,6 +239,7 @@ class CrossfadeController(private val context: Context) {
 
     fun release() {
         handler.removeCallbacksAndMessages(null)
+        analysis.shutdownNow()
         cancelCrossfade()
         main.release()
     }

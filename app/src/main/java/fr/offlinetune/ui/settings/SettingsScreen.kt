@@ -96,6 +96,11 @@ fun SettingsScreen(padding: PaddingValues) {
         } else {
             Text("Désactivé : les morceaux s'enchaînent sans blanc.", style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
         }
+        Toggle(
+            "Mix automatique",
+            "Analyse la fin et le début des morceaux pour enchaîner au bon moment, avec une transition adaptée au son.",
+            s.autoMix,
+        ) { v -> update { it.copy(autoMix = v) } }
         Toggle("Fondu à la pause et à la reprise", "Le son baisse doucement au lieu de s'arrêter net.", s.pauseFade) { v -> update { it.copy(pauseFade = v) } }
 
         Group("Téléchargement")

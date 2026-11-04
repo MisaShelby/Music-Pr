@@ -19,6 +19,8 @@ data class AppSettings(
     val crossfadeEnabled: Boolean = false,
     val crossfadeSec: Int = 6,
     val crossfadeOnSkip: Boolean = false,
+    /** « Mix automatique »: transition point and length chosen from the sound (see AutoMix). */
+    val autoMix: Boolean = false,
     val pauseFade: Boolean = true,
     val autoLyrics: Boolean = true,
     val dsp: DspSettings = DspSettings(),
