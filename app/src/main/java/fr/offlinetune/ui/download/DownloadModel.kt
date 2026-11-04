@@ -86,6 +86,7 @@ class DownloadModel(private val settings: SettingsStore, private val queue: Down
         val isQuery = runCatching { LinkParser.parse(text) is ParsedInput.Query }.getOrDefault(false)
         if (isQuery) {
             launch(DlPhase.Loading("Recherche sur toutes les plateformes…")) {
+                keys = settings.current() // keys typed just before the first search
                 val o = federated.search(text.trim())
                 if (o.songs.isEmpty()) DlPhase.Error("Aucun résultat. Essayez d'autres mots ou collez un lien.")
                 else DlPhase.Federated(o, null)

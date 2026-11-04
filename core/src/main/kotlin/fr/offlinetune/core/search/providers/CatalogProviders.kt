@@ -17,6 +17,8 @@ class DeezerProvider(private val base: String = "https://api.deezer.com") : Sear
 
     override suspend fun search(query: String, limit: Int): List<ProviderHit> {
         val json = parseJson(Http.getText("$base/search/track?limit=$limit&q=${URLEncoder.encode(query, "UTF-8")}"))
+        // Deezer answers HTTP 200 with {"error":…} on quota/rate limit: report it instead of "no results".
+        json.str("error", "message")?.let { throw java.io.IOException("Deezer : $it") }
         return json.arr("data").mapNotNull { t ->
             ProviderHit(
                 provider = provider,
