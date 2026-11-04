@@ -139,8 +139,9 @@ fun PlaylistDetail(app: App, uri: String, onGone: () -> Unit, onRenamed: (fr.off
                 val t = item.track
                 Row(
                     Modifier.fillMaxWidth().clickable(enabled = t != null) {
-                        val idx = playable.indexOf(t)
-                        app.player.playList(playable.map { it.playable() }, idx.coerceAtLeast(0))
+                        // Queue = this track and the ones after it in the list.
+                        val idx = playable.indexOf(t).coerceAtLeast(0)
+                        app.player.playList(fr.offlinetune.core.library.LibrarySort.queueFrom(playable, idx).map { it.playable() }, 0)
                     }.padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

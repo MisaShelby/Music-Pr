@@ -33,6 +33,8 @@ data class AppSettings(
     val spotifyTokens: fr.offlinetune.core.search.providers.SpotifyTokens? = null,
     val spotifyPkceVerifier: String? = null,
     val spotifyPkceState: String? = null,
+    /** Sort / grid choice per library tab (key = tab name). */
+    val tabPrefs: Map<String, TabPref> = emptyMap(),
 ) {
     val spotifyKeys get() = keyPair(spotifyId, spotifySecret)
     val tidalKeys get() = keyPair(tidalId, tidalSecret)
@@ -45,11 +47,20 @@ data class AppSettings(
 private val Context.dataStore by preferencesDataStore("settings")
 
 /** All settings stored as one JSON document in DataStore. */
+/** Sort / display preference of one library tab. */
+@Serializable
+data class TabPref(val sort: fr.offlinetune.core.library.SortKey = fr.offlinetune.core.library.SortKey.ADDED, val desc: Boolean = true, val grid: Boolean = false)
+
 class SettingsStore(private val context: Context) {
+    /** Last known library tree (non-suspending access for helpers). */
+    @Volatile var latestTree: String? = null
+        private set
+
     private val key = stringPreferencesKey("app_settings")
 
     val flow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
-        prefs[key]?.let { runCatching { LenientJson.decodeFromString<AppSettings>(it) }.getOrNull() } ?: AppSettings()
+        (prefs[key]?.let { runCatching { LenientJson.decodeFromString<AppSettings>(it) }.getOrNull() } ?: AppSettings())
+            .also { latestTree = it.libraryTreeUri }
     }
 
     suspend fun current(): AppSettings = flow.first()

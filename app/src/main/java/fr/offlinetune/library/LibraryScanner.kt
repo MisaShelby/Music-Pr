@@ -17,6 +17,8 @@ data class LibTrack(
     val lastModified: Long,
     /** Folder names + file name from the music root (for playlist relative paths). */
     val pathSegments: List<String> = emptyList(),
+    /** Cover file in the folder or picture in the file; null = not checked yet (cache from an older version). */
+    val hasArtwork: Boolean? = null,
 )
 
 /** A .m3u8 / .m3u file found in the music folder. [dirSegments] = its folder from the music root. */
@@ -33,6 +35,7 @@ data class TagData(
     val year: Int?,
     val trackNumber: Int?,
     val durationMs: Long?,
+    val hasEmbeddedPicture: Boolean = false,
 )
 
 /** A file or folder of the music tree (SAF DocumentFile on the phone, fakes in tests). */
@@ -69,8 +72,8 @@ class LibraryScanner(private val tags: (uri: String) -> TagData?) {
             val base = k.name.substringBeforeLast('.')
             val lrc = byName["${base.lowercase()}.lrc"]?.uri
             val prev = previous[k.uri]
-            if (prev != null && prev.lastModified == k.lastModified) {
-                out += prev.copy(lrcUri = lrc, coverUri = cover, pathSegments = segs + k.name)
+            if (prev != null && prev.lastModified == k.lastModified && (prev.hasArtwork != null || cover != null)) {
+                out += prev.copy(lrcUri = lrc, coverUri = cover, pathSegments = segs + k.name, hasArtwork = cover != null || prev.hasArtwork == true)
                 continue
             }
             out += track(k, base, lrc, cover).copy(pathSegments = segs + k.name)
@@ -94,6 +97,7 @@ class LibraryScanner(private val tags: (uri: String) -> TagData?) {
             lrcUri = lrc,
             coverUri = cover,
             lastModified = file.lastModified,
+            hasArtwork = cover != null || t?.hasEmbeddedPicture == true,
         )
     }
 

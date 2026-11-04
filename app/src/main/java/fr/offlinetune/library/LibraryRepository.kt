@@ -181,6 +181,11 @@ class LibraryRepository(private val context: Context, private val settings: Sett
         playlistFiles = playlistFiles.filterNot { it.uri == p.file.uri }
     }
 
+    /** Tracks without any cover (no cover file in their folder, no picture in the file). */
+    fun missingCover(): List<LibTrack> = _tracks.value.filter { it.hasArtwork == false }
+
+    val treeUri: Uri? get() = grantedTree(settings.latestTree)
+
     suspend fun readText(uri: String): String? = withContext(Dispatchers.IO) {
         runCatching { context.contentResolver.openInputStream(Uri.parse(uri))?.use { it.readBytes().toString(Charsets.UTF_8) } }.getOrNull()
     }
@@ -205,6 +210,7 @@ class LibraryRepository(private val context: Context, private val settings: Sett
                 year = (k(MediaMetadataRetriever.METADATA_KEY_YEAR) ?: k(MediaMetadataRetriever.METADATA_KEY_DATE))?.take(4)?.toIntOrNull(),
                 trackNumber = k(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)?.substringBefore('/')?.toIntOrNull(),
                 durationMs = k(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull(),
+                hasEmbeddedPicture = k(MediaMetadataRetriever.METADATA_KEY_HAS_IMAGE) == "yes" || runCatching { r.embeddedPicture != null }.getOrDefault(false),
             )
         } catch (e: Exception) {
             null
