@@ -69,7 +69,12 @@ class NotFound(val what: String) : OfflineTuneException("not found: $what") {
 }
 
 class NetworkLost(cause: Throwable? = null) : OfflineTuneException("network lost", cause) {
-    override fun userMessage() = "Connexion perdue pendant le téléchargement"
+    override fun userMessage() = "Connexion perdue ou serveur injoignable"
+}
+
+/** A server answered with an error status; [detail] is its own message when it gives one. */
+class HttpError(val code: Int, val host: String, val detail: String?) : OfflineTuneException("HTTP $code from $host: $detail") {
+    override fun userMessage() = "$host a répondu $code" + (detail?.let { " : $it" } ?: "")
 }
 
 /** Local write failure (full storage, folder not writable): never reported as a network problem. */

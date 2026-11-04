@@ -66,7 +66,7 @@ class SpotifyAccount(
         try {
             Http.client.newCall(req).execute().use { r ->
                 if (r.code == 400 || r.code == 401) throw BadKey("Spotify")
-                if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
+                if (!r.isSuccessful) throw Http.httpError(r)
                 parseJson(r.body!!.string())
             }
         } catch (e: IOException) {
@@ -110,7 +110,10 @@ class SpotifyAccount(
             if (code == 401) { val r = call(access(forceRefresh = true)); code = r.first; body = r.second }
             when {
                 code == 404 || code == 410 -> null
-                code !in 200..299 -> throw IOException("HTTP $code")
+                code !in 200..299 -> {
+                    val json = body?.let { runCatching { parseJson(it) }.getOrNull() }
+                    throw fr.offlinetune.core.model.HttpError(code, "Spotify", json?.str("error", "message") ?: json?.str("error"))
+                }
                 else -> body?.let(::parseJson)
             }
         } catch (e: IOException) {

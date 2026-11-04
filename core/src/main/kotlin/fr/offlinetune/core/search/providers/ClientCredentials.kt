@@ -41,8 +41,8 @@ class ClientCredentials(
                 .build()
             try {
                 Http.client.newCall(req).execute().use { r ->
-                    if (r.code == 400 || r.code == 401 || r.code == 403) throw BadKey(platform)
-                    if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
+                    if (r.code == 400 || r.code == 401) throw BadKey(platform)
+                    if (!r.isSuccessful) throw Http.httpError(r)
                     parseJson(r.body!!.string())
                 }
             } catch (e: IOException) {

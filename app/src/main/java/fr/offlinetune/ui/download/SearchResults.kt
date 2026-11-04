@@ -51,6 +51,13 @@ fun SearchResults(outcome: SearchOutcome, filter: Provider?, onFilter: (Provider
                 GlassChip(chipLabel(p, st), selected = filter == p, enabled = st == ProviderStatus.Ok) { onFilter(p) }
             }
         }
+        // Why a platform is missing (e.g. Spotify's own refusal message).
+        outcome.status.forEach { (p, st) ->
+            if (st is ProviderStatus.Failed) Text(
+                "${p.label} : ${st.message}", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+            )
+        }
         val songs = FederatedSearch.filter(outcome, filter)
         if (songs.isEmpty()) {
             Text("Aucun résultat sur cette plateforme.", color = Ink.Muted, modifier = Modifier.padding(20.dp))
