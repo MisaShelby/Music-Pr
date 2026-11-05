@@ -93,7 +93,7 @@ fun CustomSourcesScreen(padding: PaddingValues, onBack: () -> Unit) {
 
     fun add(origin: String, text: String, m: SourceManifest) = scope.launch {
         app.settings.update { st ->
-            val others = st.customSources.filterNot { it.link == origin || runCatching { SourceManifest.parse(it.manifest).name }.getOrNull() == m.name }
+            val others = st.customSources.filterNot { it.link == origin || runCatching { SourceManifest.parse(it.manifest, fallbackName = fr.offlinetune.core.search.custom.GithubLinks.repoName(it.link)).name }.getOrNull() == m.name }
             st.copy(customSources = others + CustomSourceEntry(origin, text))
         }
         message = "« ${m.name} » ajoutée" + if (m.needsKey) " : saisissez sa clé ci-dessous." else ". Elle apparaît dans la recherche (filtre « Sources perso »)."
@@ -138,7 +138,7 @@ fun CustomSourcesScreen(padding: PaddingValues, onBack: () -> Unit) {
         Text("Mes sources", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 24.dp, bottom = 8.dp))
         if (s.customSources.isEmpty()) Text("Aucune source pour l'instant.", color = Ink.Muted)
         s.customSources.forEach { e ->
-            val m = runCatching { SourceManifest.parse(e.manifest) }.getOrNull()
+            val m = runCatching { SourceManifest.parse(e.manifest, fallbackName = fr.offlinetune.core.search.custom.GithubLinks.repoName(e.link)) }.getOrNull()
             GlassSurface(Modifier.fillMaxWidth().padding(vertical = 6.dp), RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -190,7 +190,7 @@ fun CustomSourcesScreen(padding: PaddingValues, onBack: () -> Unit) {
             Text(
                 "Mettez ce fichier à la racine du dépôt (ou dans un dossier, puis collez le lien de ce dossier). " +
                     "{q} = mots recherchés, {key} = votre clé, {id} = l'identifiant du morceau ; $.champ.sous_champ lit une valeur dans chaque résultat. " +
-                    "« audio » doit mener directement au fichier mp3/m4a ; « playable » (facultatif) écarte les morceaux non disponibles.",
+                    "Seule l'adresse de recherche est obligatoire : titre, artiste, pochette, durée et lien audio sont trouvés automatiquement dans les réponses si vous ne les indiquez pas. « playable » (facultatif) écarte les morceaux non disponibles.",
                 style = MaterialTheme.typography.bodyMedium, color = Ink.Muted,
             )
             GlassSurface(Modifier.fillMaxWidth().padding(vertical = 8.dp), RoundedCornerShape(14.dp)) {

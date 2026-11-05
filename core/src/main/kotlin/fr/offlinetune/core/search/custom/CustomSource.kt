@@ -21,22 +21,22 @@ const val MANIFEST_FILE = "musiquepr-source.json"
 class InvalidManifest(message: String) : Exception(message)
 
 /**
- * « Source perso »: a plain description of a music API (no code is ever run).
- * Templates: `{q}` = search words, `{key}` = the user's key, `{id}` = the track's [id].
- * Paths: `$.a.b[0].c` read inside each result.
+ * « Source perso »: a plain description of a music API (no code is ever run). Only a search address is needed;
+ * everything else is optional and found automatically in the API's answers when not given.
+ * Templates: `{q}` = search words, `{key}` = the user's key, `{id}` = the track's id. Paths: `$.a.b[0].c`.
  */
 data class SourceManifest(
     val name: String,
     val search: String,
-    val results: String,
-    val id: String,
-    val title: String,
-    val artist: String,
+    val results: String?,
+    val id: String?,
+    val title: String?,
+    val artist: String?,
     val album: String?,
     val duration: String?,
     val durationInMs: Boolean,
     val cover: String?,
-    val audio: String,
+    val audio: String?,
     val container: Container,
     val quality: String,
     val needsKey: Boolean,
@@ -46,38 +46,69 @@ data class SourceManifest(
     val playable: String? = null,
 ) {
     companion object {
-        /** Reads and checks a manifest; every problem is reported in French for the user. */
-        fun parse(text: String, allowHttp: Boolean = false): SourceManifest {
-            val o = runCatching { parseJson(text).jsonObject }.getOrNull() ?: throw InvalidManifest("Le fichier n'est pas un JSON valide.")
+        private val SEARCH_KEYS = listOf("search", "searchUrl", "search_url", "searchURL", "searchEndpoint", "search_endpoint", "endpoint", "api", "url")
+        private val PLACEHOLDERS = listOf("{{q}}", "{{query}}", "{query}", "{search}", "{term}", "{keyword}", "{keywords}", "{text}", "%s")
+
+        /** Reads a manifest leniently; [fallbackName] (the repository's name) is used when the file has none. */
+        fun parse(text: String, allowHttp: Boolean = true, fallbackName: String? = null): SourceManifest {
+            val root = runCatching { parseJson(text) }.getOrNull() ?: throw InvalidManifest("Le fichier n'est pas un JSON valide.")
+            if (isExtensionCatalogue(root)) throw InvalidManifest(
+                "Ce lien est un catalogue d'extensions à télécharger et exécuter (comme Mornye), pas une description d'API : il ne peut pas être ajouté. " +
+                    "Il faut un fichier qui donne une adresse de recherche et des liens audio directs.",
+            )
+            val o = root as? JsonObject ?: throw InvalidManifest("Ce fichier ne contient pas d'adresse de recherche.")
             fun s(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
-            fun need(k: String) = s(k) ?: throw InvalidManifest("Champ « $k » manquant.")
-            val name = need("name").take(40)
-            val search = need("search")
-            val audio = need("audio")
-            if ("{q}" !in search) throw InvalidManifest("« search » doit contenir {q} (les mots recherchés).")
-            if (!audio.startsWith("$") && "{id}" !in audio) throw InvalidManifest("« audio » doit être un chemin ($.champ) ou un lien contenant {id}.")
-            fun checkLink(k: String, v: String) {
-                val ok = v.startsWith("https://") || (allowHttp && v.startsWith("http://"))
-                if (!ok) throw InvalidManifest("« $k » doit être un lien https://.")
-            }
-            checkLink("search", search)
-            if (!audio.startsWith("$")) checkLink("audio", audio)
-            val container = when (s("format")?.lowercase() ?: "mp3") {
-                "mp3" -> Container.MP3
+            val rawSearch = SEARCH_KEYS.firstNotNullOfOrNull { s(it)?.takeIf(::looksLikeLink) } ?: findSearchLink(o)
+                ?: throw InvalidManifest("Ce fichier ne contient pas d'adresse de recherche (un lien https avec {q} à la place des mots recherchés).")
+            val search = normaliseSearch(rawSearch)
+            if (!(search.startsWith("https://") || (allowHttp && search.startsWith("http://")))) throw InvalidManifest("L'adresse de recherche doit être un lien https://.")
+            val container = when (s("format")?.lowercase()) {
                 "m4a", "aac", "mp4" -> Container.M4A
-                else -> throw InvalidManifest("« format » doit être mp3 ou m4a.")
+                else -> Container.MP3
             }
             val headers = (o["headers"] as? JsonObject)?.mapNotNull { (k, v) ->
                 (v as? JsonPrimitive)?.contentOrNull?.let { k to it }
             }?.filter { (k, _) -> k.lowercase() !in setOf("cookie", "host") }?.toMap() ?: emptyMap()
+            val keyFlag = (o["key"] as? JsonPrimitive)?.contentOrNull?.lowercase()
+            val name = (s("name") ?: s("display_name") ?: fallbackName ?: hostOf(search)).take(40)
             return SourceManifest(
-                name = name, search = search, results = s("results") ?: "$", id = s("id") ?: "$.id",
-                title = need("title"), artist = need("artist"), album = s("album"), duration = s("duration"),
-                durationInMs = s("durationUnit") == "ms", cover = s("cover"), audio = audio, container = container,
+                name = name, search = search, results = s("results")?.takeIf { it.startsWith("$") },
+                id = s("id")?.takeIf { it.startsWith("$") }, title = s("title")?.takeIf { it.startsWith("$") },
+                artist = s("artist")?.takeIf { it.startsWith("$") }, album = s("album")?.takeIf { it.startsWith("$") },
+                duration = s("duration")?.takeIf { it.startsWith("$") }, durationInMs = s("durationUnit") == "ms",
+                cover = s("cover")?.takeIf { it.startsWith("$") }, audio = s("audio"), container = container,
                 quality = s("quality") ?: container.extension.uppercase(),
-                needsKey = (o["key"] as? JsonPrimitive)?.contentOrNull == "true", description = s("description"),
+                needsKey = keyFlag == "true" || "{key}" in search, description = s("description"),
                 headers = headers, playable = s("playable"),
             )
+        }
+
+        private fun looksLikeLink(v: String) = v.startsWith("https://") || v.startsWith("http://")
+
+        /** Any link in the file that has a place for the search words. */
+        private fun findSearchLink(e: JsonElement): String? = when (e) {
+            is JsonPrimitive -> e.contentOrNull?.takeIf { looksLikeLink(it) && ("{q}" in it || PLACEHOLDERS.any { p -> p in it }) }
+            is JsonObject -> e.values.firstNotNullOfOrNull { findSearchLink(it) }
+            is JsonArray -> e.firstNotNullOfOrNull { findSearchLink(it) }
+        }
+
+        private fun normaliseSearch(raw: String): String {
+            var s = PLACEHOLDERS.fold(raw) { acc, p -> acc.replace(p, "{q}") }
+            if ("{q}" !in s && s.endsWith("=")) s += "{q}"
+            if ("{q}" !in s) throw InvalidManifest("L'adresse de recherche doit contenir {q} à la place des mots recherchés.")
+            return s
+        }
+
+        private fun hostOf(url: String) = url.substringAfter("://").substringBefore('/').removePrefix("api.").removePrefix("www.")
+
+        /** Registry of downloadable plugins (download_url + sha256…), e.g. Mornye's registry.json. */
+        private fun isExtensionCatalogue(e: JsonElement): Boolean {
+            fun isEntry(x: JsonElement) = x is JsonObject && "download_url" in x && ("sha256" in x || "min_app_version" in x || "version" in x)
+            return when (e) {
+                is JsonArray -> e.isNotEmpty() && e.all(::isEntry)
+                is JsonObject -> isEntry(e) || e.values.any { v -> v is JsonArray && v.isNotEmpty() && v.all(::isEntry) }
+                else -> false
+            }
         }
     }
 }
@@ -124,6 +155,10 @@ object GithubLinks {
         return listOf(u)
     }
 
+    /** « owner/repo » → « repo » (used as the source's name when the file has none). */
+    fun repoName(input: String): String? =
+        Regex("""github\.com/[^/]+/([^/#?]+)""").find(input)?.groupValues?.get(1)?.removeSuffix(".git")
+
     /** Downloads and checks the manifest. */
     suspend fun fetch(input: String): Pair<String, SourceManifest> {
         val urls = manifestUrls(input)
@@ -132,7 +167,7 @@ object GithubLinks {
         for (url in urls) {
             try {
                 val text = Http.getText(url)
-                return text to SourceManifest.parse(text)
+                return text to SourceManifest.parse(text, allowHttp = false, fallbackName = repoName(input))
             } catch (e: InvalidManifest) {
                 throw e
             } catch (e: Throwable) {
@@ -164,28 +199,59 @@ object CustomSearch {
     private fun fill(template: String, values: Map<String, String>): String =
         values.entries.fold(template) { acc, (k, v) -> acc.replace("{$k}", v) }
 
-    /** Searches one custom source. A key is required only when the manifest says so. */
+    private val ID = listOf("$.id", "$.track_id", "$.trackId", "$.uuid", "$.key")
+    private val TITLE = listOf("$.title", "$.name", "$.track_name", "$.trackName", "$.song", "$.track.title")
+    private val ARTIST = listOf("$.artist.name", "$.artist", "$.artist_name", "$.artistName", "$.user.name", "$.author", "$.uploader", "$.creator", "$.artists[0].name", "$.channel")
+    private val ALBUM = listOf("$.album.title", "$.album.name", "$.album", "$.album_name", "$.albumName")
+    private val DURATION = listOf("$.duration", "$.length", "$.duration_sec", "$.durationSec")
+    private val COVER = listOf("$.artwork.480x480", "$.artwork.1000x1000", "$.artwork", "$.cover", "$.image", "$.thumbnail", "$.picture", "$.album.cover", "$.album_image", "$.artwork_url", "$.cover_url", "$.image_url")
+    private val AUDIO = listOf("$.audio", "$.audiodownload", "$.stream_url", "$.streamUrl", "$.stream", "$.download_url", "$.downloadUrl", "$.mp3", "$.file", "$.url", "$.link")
+
+    private fun first(r: JsonElement, given: String?, auto: List<String>): String? =
+        given?.let { JsonPaths.text(r, it) } ?: auto.firstNotNullOfOrNull { p -> JsonPaths.text(r, p) }
+
+    private fun isLink(v: String) = v.startsWith("https://") || v.startsWith("http://")
+
+    /** The list of results: the described path, else the first list of objects found in the answer. */
+    private fun resultsOf(root: JsonElement, path: String?): List<JsonElement> {
+        path?.let { return JsonPaths.list(root, it) }
+        fun find(e: JsonElement): JsonArray? = when (e) {
+            is JsonArray -> e.takeIf { a -> a.any { it is JsonObject } } ?: e.firstNotNullOfOrNull { find(it) }
+            is JsonObject -> e.values.firstNotNullOfOrNull { find(it) }
+            else -> null
+        }
+        return find(root) ?: emptyList()
+    }
+
+    /** Searches one custom source. A key is required only when the source needs one. */
     suspend fun search(m: SourceManifest, key: String?, query: String, limit: Int = 15): List<ProviderHit> {
         if (m.needsKey && key.isNullOrBlank()) throw fr.offlinetune.core.model.NeedsKey(m.name)
         val enc = { s: String -> URLEncoder.encode(s, "UTF-8") }
         val url = fill(m.search, mapOf("q" to enc(query), "key" to enc(key ?: ""), "limit" to limit.toString()))
         val root = parseJson(Http.getText(url, m.headers))
-        return JsonPaths.list(root, m.results).take(limit).mapNotNull { r ->
+        return resultsOf(root, m.results).take(limit).mapNotNull { r ->
             if (m.playable != null && JsonPaths.text(r, m.playable) == "false") return@mapNotNull null
-            val id = JsonPaths.text(r, m.id)
-            val audio = if (m.audio.startsWith("$")) JsonPaths.text(r, m.audio)
-            else id?.let { fill(m.audio, mapOf("id" to enc(it), "key" to enc(key ?: ""))) }
-            if (audio == null || !(audio.startsWith("https://") || audio.startsWith("http://"))) return@mapNotNull null
-            val dur = m.duration?.let { JsonPaths.text(r, it)?.toDoubleOrNull() }?.let { if (m.durationInMs) it / 1000 else it }?.toInt()
+            val id = first(r, m.id, ID)
+            val audio = when {
+                m.audio == null -> AUDIO.firstNotNullOfOrNull { p -> JsonPaths.text(r, p)?.takeIf(::isLink) }
+                m.audio.startsWith("$") -> JsonPaths.text(r, m.audio)
+                else -> id?.let { fill(m.audio, mapOf("id" to enc(it), "key" to enc(key ?: ""))) }
+            }
+            if (audio == null || !isLink(audio)) return@mapNotNull null
+            val path = audio.substringBefore('?').lowercase()
+            val container = if (path.endsWith(".m4a") || path.endsWith(".mp4") || path.endsWith(".aac")) Container.M4A else m.container
+            val ms = m.durationInMs || (m.duration == null && JsonPaths.text(r, "$.duration") == null && JsonPaths.text(r, "$.duration_ms") != null)
+            val durRaw = (first(r, m.duration, DURATION) ?: JsonPaths.text(r, "$.duration_ms"))?.toDoubleOrNull()
+            val dur = durRaw?.let { if (ms) it / 1000 else it }?.toInt()
             ProviderHit(
                 provider = Provider.CUSTOM,
-                url = CustomAudio.encode(m.container, audio),
-                title = JsonPaths.text(r, m.title) ?: return@mapNotNull null,
-                artist = JsonPaths.text(r, m.artist) ?: "",
-                album = m.album?.let { JsonPaths.text(r, it) },
+                url = CustomAudio.encode(container, audio),
+                title = first(r, m.title, TITLE) ?: return@mapNotNull null,
+                artist = first(r, m.artist, ARTIST) ?: "",
+                album = first(r, m.album, ALBUM),
                 durationSec = dur,
                 isrc = null,
-                coverUrl = m.cover?.let { JsonPaths.text(r, it) },
+                coverUrl = first(r, m.cover, COVER)?.takeIf(::isLink),
                 quality = m.quality,
                 label = m.name,
             )

@@ -153,7 +153,7 @@ class DownloadModel(
     @Volatile private var keys: AppSettings = AppSettings()
     private val federated = FederatedSearch.create({ keys.spotifyKeys }, { keys.tidalKeys }, newPipe) {
         keys.customSources.filter { it.enabled }.mapNotNull { e ->
-            runCatching { fr.offlinetune.core.search.custom.SourceManifest.parse(e.manifest) to e.key }.getOrNull()
+            runCatching { fr.offlinetune.core.search.custom.SourceManifest.parse(e.manifest, fallbackName = fr.offlinetune.core.search.custom.GithubLinks.repoName(e.link)) to e.key }.getOrNull()
         }
     }
 
