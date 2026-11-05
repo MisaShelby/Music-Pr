@@ -74,12 +74,58 @@ fun rememberLiveSpectrum(active: Boolean, bands: Int): FloatArray {
     return values
 }
 
-@Composable
-fun SpectrumCanvas(values: FloatArray, style: SpectrumStyle, modifier: Modifier = Modifier, color: Color = SpectrumBlue) {
-    Canvas(modifier) { drawSpectrum(values, style, color) }
+/**
+ * Up to three vivid colours taken from the cover (most present hues), brightened so the bars stand out.
+ * A grey or black-and-white cover gives soft white.
+ */
+fun coverPalette(bmp: android.graphics.Bitmap?): List<Color> {
+    if (bmp == null) return listOf(SpectrumBlue)
+    val small = android.graphics.Bitmap.createScaledBitmap(bmp, 32, 32, true)
+    val buckets = 18
+    val weight = FloatArray(buckets)
+    val sumS = FloatArray(buckets)
+    val sumH = FloatArray(buckets)
+    val hsv = FloatArray(3)
+    for (y in 0 until small.height) for (x in 0 until small.width) {
+        android.graphics.Color.colorToHSV(small.getPixel(x, y), hsv)
+        val w = hsv[1] * hsv[2] * hsv[2]
+        if (hsv[1] < 0.2f || hsv[2] < 0.2f) continue
+        val b = ((hsv[0] / 360f) * buckets).toInt().coerceIn(0, buckets - 1)
+        weight[b] += w; sumS[b] += hsv[1] * w; sumH[b] += hsv[0] * w
+    }
+    if (small !== bmp) small.recycle()
+    val total = weight.sum()
+    if (total < 3f) return listOf(Color(0xFFF2F2F7), Color(0xFFC7C7D1))
+    val picked = mutableListOf<Int>()
+    for (b in weight.indices.sortedByDescending { weight[it] }) {
+        if (weight[b] < total * 0.06f || picked.size == 3) break
+        // Skip a hue right next to one already picked: we want distinct colours.
+        if (picked.any { minOf((it - b + buckets) % buckets, (b - it + buckets) % buckets) <= 1 }) continue
+        picked += b
+    }
+    return picked.map { b ->
+        val h = sumH[b] / weight[b]
+        val sat = (sumS[b] / weight[b]).coerceIn(0.45f, 0.8f)
+        Color(android.graphics.Color.HSVToColor(floatArrayOf(h, sat, 1f)))
+    }.ifEmpty { listOf(SpectrumBlue) }
 }
 
-private fun DrawScope.drawSpectrum(values: FloatArray, style: SpectrumStyle, color: Color) {
+/** Colour of the bar at [t] (0 = left, 1 = right), blending the palette across the width. */
+private fun List<Color>.at(t: Float): Color {
+    if (size == 1) return this[0]
+    val p = t.coerceIn(0f, 1f) * (size - 1)
+    val i = p.toInt().coerceAtMost(size - 2)
+    val f = p - i
+    val a = this[i]; val b = this[i + 1]
+    return Color(a.red + (b.red - a.red) * f, a.green + (b.green - a.green) * f, a.blue + (b.blue - a.blue) * f, 1f)
+}
+
+@Composable
+fun SpectrumCanvas(values: FloatArray, style: SpectrumStyle, modifier: Modifier = Modifier, palette: List<Color> = listOf(SpectrumBlue), alpha: Float = 1f) {
+    Canvas(modifier) { drawSpectrum(values, style, palette, alpha) }
+}
+
+private fun DrawScope.drawSpectrum(values: FloatArray, style: SpectrumStyle, palette: List<Color>, alpha: Float) {
     val n = values.size
     if (n == 0) return
     val slot = size.width / n
@@ -88,6 +134,7 @@ private fun DrawScope.drawSpectrum(values: FloatArray, style: SpectrumStyle, col
     // Bars live in the upper part when a reflection is drawn under them.
     val base = if (style.reflected) size.height * 0.68f else size.height
     for (i in 0 until n) {
+        val color = palette.at((i + 0.5f) / n).copy(alpha = alpha)
         val v = values[i].coerceIn(0f, 1f)
         val x = i * slot + (slot - w) / 2
         when (style.shape) {

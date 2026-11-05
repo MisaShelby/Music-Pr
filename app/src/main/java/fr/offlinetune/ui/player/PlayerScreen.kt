@@ -139,6 +139,9 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
     val randomStyle = remember(state.mediaId) { SpectrumStyle.entries.random() }
     var tried by remember(state.mediaId) { mutableStateOf<SpectrumStyle?>(null) }
     val spStyle = tried ?: chosen ?: randomStyle
+    // Bar colours taken from the song's cover.
+    val coverBmp = fr.offlinetune.ui.rememberCover(coverKey, 128)
+    val palette = remember(coverBmp) { coverPalette(coverBmp) }
     val spectrum = rememberLiveSpectrum(viz != VizMode.OFF && state.isPlaying && !lyricsFull, spStyle.bands)
 
     // After ~3 s without touching the screen the spectrum comes forward: over the whole cover
@@ -179,7 +182,7 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
             }
             if (viz == VizMode.FULL && !showLyrics) {
                 // Plein écran: the spectrum rises from the bottom of the page and fills it, behind everything.
-                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(horizontal = 4.dp), SpectrumBlue.copy(alpha = 0.5f))
+                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(horizontal = 4.dp), palette, 0.5f)
             }
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -214,13 +217,13 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                             if (viz == VizMode.TRANSPARENT && immersive) 1f else 0f, androidx.compose.animation.core.tween(700), label = "front",
                         )
                         if (viz == VizMode.TRANSPARENT && front < 1f) {
-                            SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer(scaleX = 1.12f, scaleY = 1.12f), SpectrumBlue.copy(alpha = 0.75f * (1f - front)))
+                            SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer(scaleX = 1.12f, scaleY = 1.12f), palette, 0.75f * (1f - front))
                         }
                         Box(Modifier.fillMaxWidth().aspectRatio(1f).shadow(28.dp, shape).clip(shape)) {
                             CoverImage(coverKey, shape, Modifier.fillMaxSize(), size = 1024)
                             if (front > 0f) {
                                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f * front)))
-                                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(6.dp), SpectrumBlue.copy(alpha = 0.95f * front))
+                                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(6.dp), palette, 0.95f * front)
                             }
                             if (viz != VizMode.OFF) {
                                 SpectrumPill(
@@ -326,7 +329,7 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
         ) {
             // Touching anywhere brings the player back (any touch restarts the 3 s timer above).
             Box(Modifier.fillMaxSize().background(Color.Black).clickable { immersive = false }) {
-                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 120.dp))
+                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 120.dp), palette)
             }
         }
     }
