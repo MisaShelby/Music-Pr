@@ -1,0 +1,16 @@
+{
+  "name": "Audius",
+  "description": "Musique libre publiée par les artistes eux-mêmes. Gratuit, sans clé.",
+  "search": "https://api.audius.co/v1/tracks/search?query={q}&app_name=MusiquePr",
+  "results": "$.data",
+  "id": "$.id",
+  "title": "$.title",
+  "artist": "$.user.name",
+  "duration": "$.duration",
+  "cover": "$.artwork.480x480",
+  "playable": "$.is_streamable",
+  "audio": "https://api.audius.co/v1/tracks/{id}/stream?app_name=MusiquePr",
+  "format": "mp3",
+  "quality": "MP3 (fichier de l'artiste)",
+  "key": false
+}

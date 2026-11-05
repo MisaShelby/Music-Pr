@@ -1,0 +1,16 @@
+{
+  "name": "Jamendo",
+  "description": "Musique sous licence Creative Commons. Clé gratuite : devportal.jamendo.com (Client ID).",
+  "search": "https://api.jamendo.com/v3.0/tracks/?client_id={key}&format=json&limit={limit}&search={q}&audioformat=mp32&include=musicinfo",
+  "results": "$.results",
+  "id": "$.id",
+  "title": "$.name",
+  "artist": "$.artist_name",
+  "album": "$.album_name",
+  "duration": "$.duration",
+  "cover": "$.image",
+  "audio": "$.audio",
+  "format": "mp3",
+  "quality": "MP3 haute qualité (VBR)",
+  "key": true
+}
