@@ -288,7 +288,8 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                     )
                 }
                 if (viz == VizMode.OFF) {
-                    ClassicSeekBar(progress, dragging != null, onDrag, onRelease)
+                    // Visualisation désactivée: the song's bars (spectrum-centered-wide look) are the seek bar.
+                    WaveSeekBar(waveform, progress, Modifier.fillMaxWidth().height(84.dp).padding(vertical = 6.dp), count = 30, onDrag = onDrag, onRelease = onRelease)
                     Row(Modifier.fillMaxWidth()) {
                         Text(elapsed, style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.weight(1f))
                         Text("-" + formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0)).ifEmpty { "0:00" },

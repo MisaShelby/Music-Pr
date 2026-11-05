@@ -77,7 +77,7 @@ fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
             bottomBar = {
                 Column {
                     if (state.mediaId != null) {
-                        MiniPlayer(state, coverKey, onOpen = { playerOpen = true }, onToggle = { app.player.togglePlay() }, onNext = { app.player.next() })
+                        MiniPlayer(state, coverKey, onOpen = { playerOpen = true }, onToggle = { app.player.togglePlay() }, onNext = { app.player.next() }, onSeek = { app.player.seekTo(it) })
                     }
                     GlassNavBar(DESTS, tab) { tab = it }
                 }

@@ -21,6 +21,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,8 +35,11 @@ import fr.offlinetune.ui.glass.GlassSurface
 import fr.offlinetune.ui.theme.Ink
 
 @Composable
-fun MiniPlayer(state: PlayerUiState, coverKey: String?, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit) {
-    val progress = if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs else 0f
+fun MiniPlayer(state: PlayerUiState, coverKey: String?, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit = {}) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val waveform = rememberWaveform(context, state.mediaId, state.durationMs, drumBarsFor(state.durationMs))
+    var dragging by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
+    val progress = dragging ?: rememberSmoothProgress(state.positionMs, state.durationMs, state.isPlaying, state.speed)
     GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 6.dp), RoundedCornerShape(22.dp), strong = true) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -49,9 +54,12 @@ fun MiniPlayer(state: PlayerUiState, coverKey: String?, onOpen: () -> Unit, onTo
             }
             IconButton(onClick = onNext) { Icon(Icons.Rounded.SkipNext, "Suivant") }
         }
-        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 6.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Glass.Fill)) {
-            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp).background(MaterialTheme.colorScheme.primary))
-        }
+        // The song as bars instead of a line; slide on it to move in the song.
+        WaveSeekBar(
+            waveform, progress, Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 8.dp).height(26.dp), count = 48,
+            onDrag = { dragging = it },
+            onRelease = { dragging?.let { onSeek((it * state.durationMs).toLong()) }; dragging = null },
+        )
     }
     }
 }

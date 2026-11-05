@@ -250,3 +250,41 @@ fun WaveDrum(bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRele
         }
     }
 }
+
+/** Groups [bars] into [n] bars (loudest of each group). */
+fun regroup(bars: FloatArray, n: Int): FloatArray = FloatArray(n) { i ->
+    val from = (i.toLong() * bars.size / n).toInt()
+    val to = ((i + 1L) * bars.size / n).toInt().coerceAtLeast(from + 1).coerceAtMost(bars.size)
+    var m = 0f
+    for (k in from until to) m = maxOf(m, bars[k])
+    m
+}
+
+/**
+ * The song as « spectrum-centered-wide » bars (quiet parts low, loud parts high) used as the seek bar:
+ * played part coloured, the rest faint. Tap or slide on it to move in the song when [seekable].
+ */
+@Composable
+fun WaveSeekBar(
+    bars: FloatArray?, progress: Float, modifier: Modifier = Modifier, count: Int = 30, seekable: Boolean = true,
+    onDrag: (Float) -> Unit = {}, onRelease: () -> Unit = {},
+) {
+    val shown = remember(bars, count) { bars?.takeIf { it.isNotEmpty() }?.let { regroup(it, count) } }
+    Canvas(if (seekable) modifier.seekGestures(onDrag, onRelease) else modifier) {
+        val n = shown?.size ?: count
+        val slot = size.width / n
+        val w = slot * 0.62f
+        val lo = shown?.minOrNull() ?: 0f
+        val span = ((shown?.maxOrNull() ?: 1f) - lo).coerceAtLeast(0.05f)
+        for (i in 0 until n) {
+            val v = shown?.let { ((it[i] - lo) / span).coerceIn(0f, 1f) } ?: 0f
+            val h = ((0.16f + 0.84f * v) * size.height).coerceAtLeast(w)
+            val x = i * slot + (slot - w) / 2
+            val played = (i + 0.5f) / n <= progress
+            drawRoundRect(
+                if (played) SpectrumBlue else Color.White.copy(alpha = 0.22f),
+                Offset(x, (size.height - h) / 2), Size(w, h), CornerRadius(w / 2, w / 2),
+            )
+        }
+    }
+}
