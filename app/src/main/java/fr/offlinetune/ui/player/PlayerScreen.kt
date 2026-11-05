@@ -1,6 +1,7 @@
 package fr.offlinetune.ui.player
 
 import android.content.Context
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.lazy.items
 import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler
@@ -140,12 +141,13 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
     val spStyle = tried ?: chosen ?: randomStyle
     val spectrum = rememberLiveSpectrum(viz != VizMode.OFF && state.isPlaying && !lyricsFull, spStyle.bands)
 
-    // Plein écran: after ~3 s without touching the screen, only the spectrum stays.
+    // After ~3 s without touching the screen the spectrum comes forward: over the whole cover
+    // (Transparence des contrôles) or alone on the whole screen (Plein écran).
     var touches by remember { mutableIntStateOf(0) }
     var immersive by remember { mutableStateOf(false) }
     LaunchedEffect(viz, touches, state.isPlaying, showLyrics, showQueue, addToList, visualMenu) {
         immersive = false
-        if (viz == VizMode.FULL && state.isPlaying && !showLyrics && !showQueue && !addToList && !visualMenu) {
+        if (viz != VizMode.OFF && state.isPlaying && !showLyrics && !showQueue && !addToList && !visualMenu) {
             delay(3000)
             immersive = true
         }
@@ -176,8 +178,8 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                 return@AppBackdrop
             }
             if (viz == VizMode.FULL && !showLyrics) {
-                // Plein écran: the spectrum fills the lower part of the screen, behind the controls.
-                SpectrumCanvas(spectrum, spStyle, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.6f).padding(horizontal = 8.dp, vertical = 24.dp), SpectrumBlue.copy(alpha = 0.85f))
+                // Plein écran: the spectrum rises from the bottom of the page and fills it, behind everything.
+                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(horizontal = 4.dp), SpectrumBlue.copy(alpha = 0.5f))
             }
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -206,12 +208,19 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                         LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) })
                     } else {
                         val shape = RoundedCornerShape(22.dp)
+                        // Transparence des contrôles: the spectrum lives behind the cover (peeking around it);
+                        // when the screen is left alone it comes in front and fills the whole cover.
+                        val front by androidx.compose.animation.core.animateFloatAsState(
+                            if (viz == VizMode.TRANSPARENT && immersive) 1f else 0f, androidx.compose.animation.core.tween(700), label = "front",
+                        )
+                        if (viz == VizMode.TRANSPARENT && front < 1f) {
+                            SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer(scaleX = 1.12f, scaleY = 1.12f), SpectrumBlue.copy(alpha = 0.75f * (1f - front)))
+                        }
                         Box(Modifier.fillMaxWidth().aspectRatio(1f).shadow(28.dp, shape).clip(shape)) {
                             CoverImage(coverKey, shape, Modifier.fillMaxSize(), size = 1024)
-                            if (viz == VizMode.TRANSPARENT) {
-                                // Transparence des contrôles: the live spectrum over the darkened cover.
-                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
-                                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(start = 6.dp, end = 6.dp, top = 64.dp, bottom = 10.dp), SpectrumBlue.copy(alpha = 0.9f))
+                            if (front > 0f) {
+                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f * front)))
+                                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(6.dp), SpectrumBlue.copy(alpha = 0.95f * front))
                             }
                             if (viz != VizMode.OFF) {
                                 SpectrumPill(
@@ -311,7 +320,7 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
         }
 
         androidx.compose.animation.AnimatedVisibility(
-            immersive, enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(600)),
+            immersive && viz == VizMode.FULL, enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(600)),
             exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250)),
         ) {
             // Touching anywhere brings the player back (any touch restarts the 3 s timer above).
