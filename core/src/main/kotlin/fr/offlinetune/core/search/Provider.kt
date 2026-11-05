@@ -8,6 +8,8 @@ enum class Provider(val label: String, val initials: String, val colorHex: Long,
     APPLE_MUSIC("Apple Music", "A", 0xFFFA2D48, false),
     SPOTIFY("Spotify", "S", 0xFF1DB954, false),
     TIDAL("Tidal", "T", 0xFF33383F, false),
+    /** « Sources perso » added by the user from a repository manifest (direct audio links). */
+    CUSTOM("Sources perso", "+", 0xFF0A84FF, true),
 }
 
 /** One track as found by one platform's search. [quality] is what that platform offers ("" until resolved). */
@@ -49,5 +51,5 @@ interface SearchProvider {
 
 /** Fields of a song come from the most reliable catalogue first. */
 internal val CATALOG_PRIORITY = listOf(
-    Provider.DEEZER, Provider.APPLE_MUSIC, Provider.SPOTIFY, Provider.TIDAL, Provider.YOUTUBE_MUSIC, Provider.SOUNDCLOUD,
+    Provider.DEEZER, Provider.APPLE_MUSIC, Provider.SPOTIFY, Provider.TIDAL, Provider.YOUTUBE_MUSIC, Provider.SOUNDCLOUD, Provider.CUSTOM,
 )

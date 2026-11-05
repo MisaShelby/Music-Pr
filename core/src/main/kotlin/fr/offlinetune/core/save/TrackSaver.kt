@@ -95,7 +95,12 @@ class TrackSaver(
 
         fun create(newPipe: NewPipeSource = NewPipeSource(), downloader: StreamDownloader = StreamDownloader()) =
             TrackSaver(
-                resolve = { newPipe.bestStream(it) },
+                resolve = { url ->
+                    // « Sources perso »: direct link declared by the source's manifest.
+                    fr.offlinetune.core.search.custom.CustomAudio.decode(url)?.let { (c, link) ->
+                        ResolvedStream(link, fr.offlinetune.core.search.custom.customFormat(c, ""), null, isHls = false, contentLength = null)
+                    } ?: newPipe.bestStream(url)
+                },
                 download = { s, f, p -> downloader.download(s, f, p) },
                 onFailure = { newPipe.invalidate(it) },
             )

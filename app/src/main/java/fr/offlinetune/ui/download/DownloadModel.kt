@@ -151,7 +151,11 @@ class DownloadModel(
     private val newPipe = fr.offlinetune.core.meta.NewPipeSource()
     private val resolver = SourceResolver(newPipe, lyrics)
     @Volatile private var keys: AppSettings = AppSettings()
-    private val federated = FederatedSearch.create({ keys.spotifyKeys }, { keys.tidalKeys }, newPipe)
+    private val federated = FederatedSearch.create({ keys.spotifyKeys }, { keys.tidalKeys }, newPipe) {
+        keys.customSources.filter { it.enabled }.mapNotNull { e ->
+            runCatching { fr.offlinetune.core.search.custom.SourceManifest.parse(e.manifest) to e.key }.getOrNull()
+        }
+    }
 
     init {
         scope.launch { settings.flow.collect { keys = it } }

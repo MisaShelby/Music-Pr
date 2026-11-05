@@ -20,7 +20,7 @@ data class TrackInfo(
 enum class Container(val extension: String) { OGG_OPUS("opus"), MP3("mp3"), M4A("m4a") }
 
 data class AudioFormat(val container: Container, val codecLabel: String, val bitrateKbps: Int) {
-    fun label() = "$codecLabel · $bitrateKbps kb/s"
+    fun label() = if (bitrateKbps > 0) "$codecLabel · $bitrateKbps kb/s" else codecLabel
 }
 
 data class SourceCandidate(

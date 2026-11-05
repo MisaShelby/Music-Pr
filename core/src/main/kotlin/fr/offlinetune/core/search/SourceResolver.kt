@@ -32,8 +32,14 @@ class SourceResolver(private val newPipe: NewPipeSource, private val lyrics: Lyr
         val hasLyrics = async {
             runCatching { lyrics.find(TrackInfo(song.title, song.artist, song.album, durationSec = song.durationSec)) != null }.getOrDefault(false)
         }
-        val direct = song.hits.values.filter { it.provider.downloadable }
-        var options = direct.mapNotNull { h ->
+        val direct = song.hits.values.filter { it.provider.downloadable && it.provider != Provider.CUSTOM }
+        // « Sources perso »: the manifest already gives a direct audio link and its format.
+        val custom = song.hits.values.filter { it.provider == Provider.CUSTOM }.mapNotNull { h ->
+            fr.offlinetune.core.search.custom.CustomAudio.decode(h.url)?.let { (c, _) ->
+                DownloadOption(h.provider, h.url, h.title, h.artist, h.durationSec, fr.offlinetune.core.search.custom.customFormat(c, h.quality), isMatch = false, hasLyrics = false, label = h.label)
+            }
+        }
+        var options = custom + direct.mapNotNull { h ->
             runCatching { newPipe.bestStream(h.url) }.getOrNull()?.let { s ->
                 DownloadOption(h.provider, h.url, h.title, h.artist, h.durationSec, s.format, isMatch = false, hasLyrics = false, label = h.label)
             }

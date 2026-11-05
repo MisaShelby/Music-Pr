@@ -27,6 +27,8 @@ data class AppSettings(
     val playerVisual: String = "TRANSPARENT",
     /** Live spectrum look (SpectrumStyle name) or RANDOM = a different one for each song. */
     val spectrumStyle: String = "RANDOM",
+    /** « Sources perso »: manifests added from repository links (or bundled examples). */
+    val customSources: List<CustomSourceEntry> = emptyList(),
     val pauseFade: Boolean = true,
     val autoLyrics: Boolean = true,
     val dsp: DspSettings = DspSettings(),
@@ -56,6 +58,10 @@ private val Context.dataStore by preferencesDataStore("settings")
 
 /** All settings stored as one JSON document in DataStore. */
 /** Sort / display preference of one library tab. */
+/** One « Source perso »: where it came from, its manifest text, on/off and the user's key for it. */
+@Serializable
+data class CustomSourceEntry(val link: String, val manifest: String, val enabled: Boolean = true, val key: String? = null)
+
 @Serializable
 data class TabPref(val sort: fr.offlinetune.core.library.SortKey = fr.offlinetune.core.library.SortKey.ADDED, val desc: Boolean = true, val grid: Boolean = false)
 

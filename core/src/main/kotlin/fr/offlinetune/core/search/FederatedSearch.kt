@@ -64,10 +64,11 @@ class FederatedSearch(private val providers: List<SearchProvider>, private val t
             spotifyKeys: () -> Pair<String, String>?,
             tidalKeys: () -> Pair<String, String>?,
             newPipe: NewPipeSource = NewPipeSource(),
+            customSources: () -> List<Pair<fr.offlinetune.core.search.custom.SourceManifest, String?>> = { emptyList() },
         ) = FederatedSearch(
             listOf(
                 YouTubeMusicProvider(newPipe), SoundCloudProvider(newPipe), DeezerProvider(), AppleMusicProvider(),
-                SpotifyProvider(spotifyKeys), TidalProvider(tidalKeys),
+                SpotifyProvider(spotifyKeys), TidalProvider(tidalKeys), fr.offlinetune.core.search.custom.CustomProvider(customSources),
             ),
         )
     }

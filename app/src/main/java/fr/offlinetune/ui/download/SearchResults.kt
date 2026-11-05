@@ -48,6 +48,8 @@ fun SearchResults(outcome: SearchOutcome, filter: Provider?, onFilter: (Provider
             GlassChip("Tout", selected = filter == null) { onFilter(null) }
             Provider.entries.forEach { p ->
                 val st = outcome.status[p]
+                // « Sources perso » chip only when the user has some.
+                if (p == Provider.CUSTOM && st == ProviderStatus.Ok && outcome.songs.none { Provider.CUSTOM in it.hits }) return@forEach
                 GlassChip(chipLabel(p, st), selected = filter == p, enabled = st == ProviderStatus.Ok) { onFilter(p) }
             }
         }

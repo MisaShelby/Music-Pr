@@ -71,8 +71,17 @@ fun SettingsScreen(padding: PaddingValues) {
         if (uri != null) { persist(uri); update { it.copy(downloadTreeUri = uri.toString()) } }
     }
 
+    var showCustom by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (showCustom) { CustomSourcesScreen(padding) { showCustom = false }; return }
+
     Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Text("Réglages", style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+
+        Group("Sources")
+        Clickable(
+            "Sources perso (dépôts GitHub)",
+            if (s.customSources.isEmpty()) "Ajouter une source de musique depuis un lien" else "${s.customSources.count { it.enabled }} active(s) sur ${s.customSources.size}",
+        ) { showCustom = true }
 
         Group("Dossiers")
         Clickable("Dossier de bibliothèque", folderLabel(s.libraryTreeUri)) { pickLibrary.launch(null) }
