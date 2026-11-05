@@ -36,6 +36,8 @@ class CrossfadeController(private val context: Context) {
     private sealed interface Xf {
         data object Idle : Xf
         data class Preparing(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, var seeked: Boolean = false) : Xf
+        /** Aux plays silently until its sound really comes out, in step with main; only then the hand-over happens. */
+        data class Syncing(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, var since: Long, var tries: Int = 0) : Xf
         data class Fading(val aux: ExoPlayer, val start: Long, val durationMs: Long) : Xf
     }
     private var xf: Xf = Xf.Idle
@@ -96,7 +98,11 @@ class CrossfadeController(private val context: Context) {
                     // Ease the incoming tempo back to normal over the last quarter.
                     if (dj.inSpeed != 1.0 && t > 0.75f) {
                         val k = ((t - 0.75f) / 0.25f).coerceIn(0f, 1f)
-                        main.playbackParameters = androidx.media3.common.PlaybackParameters((userSpeed * (dj.inSpeed + (1 - dj.inSpeed) * k)).toFloat(), 1f)
+                        val target = (userSpeed * (dj.inSpeed + (1 - dj.inSpeed) * k)).toFloat()
+                        // Few, larger steps: every tempo change restarts the time-stretcher (audible hiccup).
+                        if (kotlin.math.abs(target - main.playbackParameters.speed) >= 0.012f || k >= 1f && target != main.playbackParameters.speed) {
+                            main.playbackParameters = androidx.media3.common.PlaybackParameters(target, 1f)
+                        }
                     }
                 }
                 if (t >= 1f) cancelCrossfade()
@@ -104,6 +110,18 @@ class CrossfadeController(private val context: Context) {
             is Xf.Preparing -> {
                 // Automatic transition reached its end before aux was ready: give up, main plays on gaplessly.
                 if (!s.manual && !main.isPlaying) cancelCrossfade()
+            }
+            is Xf.Syncing -> {
+                if (!main.isPlaying) { cancelCrossfade(); return }
+                val now = SystemClock.elapsedRealtime()
+                val waited = now - s.since
+                if (waited > 4000) { cancelCrossfade(); return }
+                if (!s.aux.isPlaying || waited < 250) return
+                val drift = main.currentPosition - s.aux.currentPosition
+                if (kotlin.math.abs(drift) > 40 && s.tries < 3) {
+                    s.aux.seekTo(s.aux.currentPosition + drift + 20)
+                    s.since = now; s.tries++
+                } else go(s)
             }
             Xf.Idle -> {
                 val st = settings
@@ -148,7 +166,10 @@ class CrossfadeController(private val context: Context) {
                     p.seeked = true
                     a.seekTo(main.currentPosition + 30)
                 } else {
-                    go(p)
+                    // Start aux muted; main keeps sounding until aux is really audible (see Syncing).
+                    a.volume = 0f
+                    xf = Xf.Syncing(a, p.next, p.manual, SystemClock.elapsedRealtime())
+                    a.play()
                 }
             }
             override fun onPlayerError(error: PlaybackException) { if (xf === p) cancelCrossfade() }
@@ -189,7 +210,7 @@ class CrossfadeController(private val context: Context) {
         return plan
     }
 
-    private fun go(p: Xf.Preparing) {
+    private fun go(p: Xf.Syncing) {
         val auto = if (!p.manual && settings.autoMix) plan else null
         val fadeMs = when {
             p.manual -> settings.crossfadeSec * 1000L
@@ -199,8 +220,6 @@ class CrossfadeController(private val context: Context) {
         if (fadeMs < 300) { cancelCrossfade(); return }
         auxOutGain = 1f
         xf = Xf.Fading(p.aux, SystemClock.elapsedRealtime(), fadeMs)
-        p.aux.volume = fadeGain
-        p.aux.play()
         xfadeGain = 0f
         applyVolume()
         if (p.next) {
@@ -219,6 +238,7 @@ class CrossfadeController(private val context: Context) {
     private fun cancelCrossfade() {
         when (val s = xf) {
             is Xf.Preparing -> s.aux.release()
+            is Xf.Syncing -> s.aux.release()
             is Xf.Fading -> s.aux.release()
             Xf.Idle -> {}
         }

@@ -75,6 +75,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -126,7 +127,7 @@ private data class Group(val name: String, val sub: String, val sample: LibTrack
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(contentPadding: PaddingValues) {
+fun LibraryScreen(contentPadding: PaddingValues, searchMode: Boolean = false) {
     val context = LocalContext.current
     val app = context.applicationContext as App
     val tracks by app.library.tracks.collectAsState()
@@ -195,7 +196,7 @@ fun LibraryScreen(contentPadding: PaddingValues) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (detail != null) IconButton(onClick = { detail = null }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Retour") }
                 Text(
-                    when (val d = detail) { is Detail.Album -> d.name; is Detail.Artist -> d.name; is Detail.Playlist -> d.name; null -> "Bibliothèque" },
+                    when (val d = detail) { is Detail.Album -> d.name; is Detail.Artist -> d.name; is Detail.Playlist -> d.name; null -> if (searchMode) "Rechercher" else "Bibliothèque" },
                     style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = {
@@ -207,6 +208,14 @@ fun LibraryScreen(contentPadding: PaddingValues) {
             }
         }
         if (state == LibState.Scanning) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+        // The saved folder stays chosen: if it cannot be read right now, keep showing the known tracks.
+        if ((state == LibState.NeedsFolder || state is LibState.Error) && tracks.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Dossier momentanément inaccessible.", style = MaterialTheme.typography.bodyMedium, color = Ink.Muted, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = { scope.launch { app.library.refresh() } }) { Text("Réessayer") }
+                androidx.compose.material3.TextButton(onClick = { pickFolder.launch(null) }) { Text("Changer") }
+            }
+        }
 
         val onTrack: (List<LibTrack>, Int) -> Unit = { list, i ->
             if (selection.isNotEmpty()) {
@@ -228,7 +237,7 @@ fun LibraryScreen(contentPadding: PaddingValues) {
         )
 
         when {
-            state == LibState.NeedsFolder || state is LibState.Error -> EmptyLibrary(
+            (state == LibState.NeedsFolder || state is LibState.Error) && tracks.isEmpty() -> EmptyLibrary(
                 (state as? LibState.Error)?.message ?: "Choisissez le dossier où se trouve votre musique sur le téléphone.",
             ) { pickFolder.launch(null) }
             detail is Detail.Playlist -> PlaylistDetail(app, (detail as Detail.Playlist).uri, onGone = { detail = null }, onRenamed = { f -> detail = Detail.Playlist(f.uri, f.name) })
@@ -240,6 +249,29 @@ fun LibraryScreen(contentPadding: PaddingValues) {
                     is Detail.Playlist -> emptyList()
                 }
                 TrackList(app, list, grid = false, selection, actions, onTrack, onLong)
+            }
+            searchMode -> {
+                // « Rechercher » tab: search among the songs of the music folder.
+                val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+                LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it }, singleLine = true,
+                    placeholder = { Text("Titre, artiste, album…") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Effacer") } },
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                        .then(androidx.compose.ui.Modifier.focusRequester(focus)),
+                )
+                when {
+                    query.isBlank() -> EmptyHint("Tapez un titre, un artiste ou un album pour chercher dans votre musique (${tracks.size} morceaux).")
+                    sortedTracks.isEmpty() -> EmptyHint("Aucun morceau ne correspond à « ${query.trim()} ».")
+                    else -> {
+                        Text("${sortedTracks.size} résultat(s)", style = MaterialTheme.typography.labelLarge, color = Ink.Muted,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                        TrackList(app, sortedTracks, false, selection, actions, onTrack, onLong)
+                    }
+                }
             }
             else -> {
                 OutlinedTextField(

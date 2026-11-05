@@ -108,10 +108,23 @@ class LibraryRepository(private val context: Context, private val settings: Sett
         if (tree == null) { _state.value = LibState.NeedsFolder; return@withLock }
         _state.value = LibState.Scanning
         try {
-            val result = withContext(Dispatchers.IO) {
-                val root = SafNode.root(context, tree)
-                root.children() // fails fast if the folder is gone (SD card removed)
-                scanner.scanAll(root, _tracks.value.associateBy { it.uri })
+            // Right after boot or when the app was killed, the storage provider can refuse the first queries:
+            // retry before concluding that the folder is gone (the saved folder is never forgotten here).
+            var attempt = 0
+            val result = run {
+                while (true) {
+                    try {
+                        return@run withContext(Dispatchers.IO) {
+                            val root = SafNode.root(context, tree)
+                            root.children() // fails fast if the folder is gone (SD card removed)
+                            scanner.scanAll(root, _tracks.value.associateBy { it.uri })
+                        }
+                    } catch (e: Exception) {
+                        if (++attempt >= 3) throw e
+                        kotlinx.coroutines.delay(1500L * attempt)
+                    }
+                }
+                @Suppress("UNREACHABLE_CODE") error("unreachable")
             }
             publish(result.tracks)
             playlistLock.withLock {

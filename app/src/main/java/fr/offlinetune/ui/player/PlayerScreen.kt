@@ -1,6 +1,14 @@
 package fr.offlinetune.ui.player
 
 import android.content.Context
+import androidx.compose.foundation.lazy.items
+import kotlinx.coroutines.delay
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.FullscreenExit
+import androidx.compose.material.icons.rounded.Fullscreen
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
@@ -104,12 +112,13 @@ fun qualityLabel(context: Context, uri: String): String? {
     }
 }
 
-/** Now playing, direction A: blurred cover colours over the whole screen, big cover, glass bar at the bottom. */
+/** Now playing: cover with the live spectrum, the song's waveform globe behind the controls, glass bar at the bottom. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: String?, onClose: () -> Unit, onOpenSound: () -> Unit) {
     val context = LocalContext.current
     var showLyrics by rememberSaveable { mutableStateOf(false) }
+    var lyricsFull by rememberSaveable { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var addToList by remember { mutableStateOf(false) }
     var lrc by remember(lrcUri) { mutableStateOf<String?>(null) }
@@ -124,92 +133,161 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
     var visualMenu by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    AppBackdrop(coverKey, MaterialTheme.colorScheme.primary, Modifier.clickable(enabled = false) {}) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Réduire") }
-                Text("En lecture", style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                Spacer(Modifier.width(48.dp))
+    // Spectrum look: the saved one, or a random one per song (« Aléatoire »); the pill's arrow tries another.
+    val chosen = SpectrumStyle.from(settings.spectrumStyle)
+    val randomStyle = remember(state.mediaId) { SpectrumStyle.entries.random() }
+    var tried by remember(state.mediaId) { mutableStateOf<SpectrumStyle?>(null) }
+    val spStyle = tried ?: chosen ?: randomStyle
+    val spectrum = rememberLiveSpectrum(viz != VizMode.OFF && state.isPlaying && !lyricsFull, spStyle.bands)
+
+    // Plein écran: after ~3 s without touching the screen, only the spectrum stays.
+    var touches by remember { mutableIntStateOf(0) }
+    var immersive by remember { mutableStateOf(false) }
+    LaunchedEffect(viz, touches, state.isPlaying, showLyrics, showQueue, addToList, visualMenu) {
+        immersive = false
+        if (viz == VizMode.FULL && state.isPlaying && !showLyrics && !showQueue && !addToList && !visualMenu) {
+            delay(3000)
+            immersive = true
+        }
+    }
+    BackHandler(enabled = lyricsFull) { lyricsFull = false }
+
+    Box(
+        Modifier.fillMaxSize().pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    val e = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    if (e.changes.any { it.pressed }) touches++
+                }
             }
-
-            var dragging by remember { mutableStateOf<Float?>(null) }
-            val dur = state.durationMs.coerceAtLeast(1)
-            val waveform = rememberWaveform(context, state.mediaId, state.durationMs, drumBarsFor(state.durationMs))
-            val progress = dragging ?: rememberSmoothProgress(state.positionMs, state.durationMs, state.isPlaying, state.speed)
-            val onDrag: (Float) -> Unit = { dragging = it }
-            val onRelease: () -> Unit = { dragging?.let { app.player.seekTo((it * dur).toLong()) }; dragging = null }
-            val elapsed = formatDuration(dragging?.let { (it * dur).toLong() } ?: state.positionMs).ifEmpty { "0:00" }
-            val total = formatDuration(state.durationMs).ifEmpty { "0:00" }
-
-            Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                if (!showLyrics && viz == VizMode.FULL) {
-                    // Plein écran: the song's waveform takes the cover's place, seekable everywhere.
-                    Box(Modifier.fillMaxSize()) {
-                        WaveDrum(waveform, progress, onDrag, onRelease, Modifier.fillMaxSize().padding(vertical = 8.dp))
-                        TimeCorners(elapsed, total, dragging != null)
+        },
+    ) {
+        AppBackdrop(coverKey, MaterialTheme.colorScheme.primary, Modifier.clickable(enabled = false) {}) {
+            if (lyricsFull) {
+                // Paroles en plein écran: nothing but the lyrics.
+                Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                    LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) }, modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 48.dp))
+                    Row(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                        RoundButton(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.isPlaying) "Pause" else "Lecture", 40.dp) { app.player.togglePlay() }
+                        Spacer(Modifier.width(8.dp))
+                        RoundButton(Icons.Rounded.FullscreenExit, "Quitter le plein écran", 40.dp) { lyricsFull = false }
                     }
-                } else if (showLyrics) {
-                    LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) })
-                } else {
-                    CoverImage(
-                        coverKey, RoundedCornerShape(22.dp),
-                        Modifier.fillMaxWidth().aspectRatio(1f).shadow(28.dp, RoundedCornerShape(22.dp)),
-                        size = 1024,
+                }
+                return@AppBackdrop
+            }
+            if (viz == VizMode.FULL && !showLyrics) {
+                // Plein écran: the spectrum fills the lower part of the screen, behind the controls.
+                SpectrumCanvas(spectrum, spStyle, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.6f).padding(horizontal = 8.dp, vertical = 24.dp), SpectrumBlue.copy(alpha = 0.85f))
+            }
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Réduire") }
+                    Text(
+                        if (showLyrics) state.title else "En lecture", style = MaterialTheme.typography.labelMedium, color = Ink.Muted,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                    if (showLyrics) IconButton(onClick = { lyricsFull = true }) { Icon(Icons.Rounded.Fullscreen, "Paroles en plein écran") }
+                    else Spacer(Modifier.width(48.dp))
+                }
+
+                var dragging by remember { mutableStateOf<Float?>(null) }
+                val dur = state.durationMs.coerceAtLeast(1)
+                val waveform = rememberWaveform(context, state.mediaId, state.durationMs, drumBarsFor(state.durationMs))
+                val progress = dragging ?: rememberSmoothProgress(state.positionMs, state.durationMs, state.isPlaying, state.speed)
+                val onDrag: (Float) -> Unit = { dragging = it }
+                val onRelease: () -> Unit = { dragging?.let { app.player.seekTo((it * dur).toLong()) }; dragging = null }
+                val elapsed = formatDuration(dragging?.let { (it * dur).toLong() } ?: state.positionMs).ifEmpty { "0:00" }
+                val total = formatDuration(state.durationMs).ifEmpty { "0:00" }
+
+                Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                    if (showLyrics) {
+                        // Lyrics take the cover's and the title's place.
+                        LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) })
+                    } else {
+                        val shape = RoundedCornerShape(22.dp)
+                        Box(Modifier.fillMaxWidth().aspectRatio(1f).shadow(28.dp, shape).clip(shape)) {
+                            CoverImage(coverKey, shape, Modifier.fillMaxSize(), size = 1024)
+                            if (viz == VizMode.TRANSPARENT) {
+                                // Transparence des contrôles: the live spectrum over the darkened cover.
+                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+                                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(start = 6.dp, end = 6.dp, top = 64.dp, bottom = 10.dp), SpectrumBlue.copy(alpha = 0.9f))
+                            }
+                            if (viz != VizMode.OFF) {
+                                SpectrumPill(
+                                    style = spStyle, random = chosen == null,
+                                    onPick = { v -> tried = null; scope.launch { app.settings.update { it.copy(spectrumStyle = v) } } },
+                                    onNext = { tried = SpectrumStyle.entries[(spStyle.ordinal + 1) % SpectrumStyle.entries.size] },
+                                    modifier = Modifier.align(Alignment.TopCenter).padding(8.dp).fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (!showLyrics) {
+                    Text(state.title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOf(state.artist, state.album).filter { it.isNotBlank() }.joinToString(" — "),
+                        style = MaterialTheme.typography.bodyLarge, color = Ink.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // Round option buttons: visualisation menu, repeat, shuffle, quality.
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        RoundButton(Icons.Rounded.GraphicEq, "Visualisation", 40.dp, active = viz != VizMode.OFF) { visualMenu = true }
+                        androidx.compose.material3.DropdownMenu(expanded = visualMenu, onDismissRequest = { visualMenu = false }, containerColor = Ink.Surface) {
+                            VizMode.entries.forEach { v ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(v.label) },
+                                    trailingIcon = { if (v == viz) Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) },
+                                    onClick = { visualMenu = false; scope.launch { app.settings.update { it.copy(playerVisual = v.name) } } },
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    RoundButton(
+                        if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                        when (state.repeatMode) { Player.REPEAT_MODE_ONE -> "Répéter le morceau"; Player.REPEAT_MODE_ALL -> "Répéter tout"; else -> "Pas de répétition" },
+                        40.dp, active = state.repeatMode != Player.REPEAT_MODE_OFF,
+                    ) { app.player.cycleRepeat() }
+                    Spacer(Modifier.width(10.dp))
+                    RoundButton(Icons.Rounded.Shuffle, "Aléatoire", 40.dp, active = state.shuffle) {
+                        app.player.toggleShuffle()
+                        Toast.makeText(context, if (state.shuffle) "Ordre de la liste rétabli" else "File mélangée : voir « File » pour la suite", Toast.LENGTH_SHORT).show()
+                    }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                        quality?.let { q ->
+                            GlassSurface(shape = RoundedCornerShape(50)) {
+                                Text(q, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
+                            }
+                        }
+                    }
+                }
+
+                val transport: @Composable () -> Unit = {
+                    TransportRow(
+                        playing = state.isPlaying,
+                        onPrev = { app.player.previous() },
+                        onBack = { app.player.seekTo((state.positionMs - 10_000).coerceAtLeast(0)) },
+                        onPlay = { app.player.togglePlay() },
+                        onFwd = { app.player.seekTo((state.positionMs + 10_000).coerceAtMost(state.durationMs)) },
+                        onNext = { app.player.next() },
                     )
                 }
-            }
-
-            Text(state.title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(
-                listOf(state.artist, state.album).filter { it.isNotBlank() }.joinToString(" — "),
-                style = MaterialTheme.typography.bodyLarge, color = Ink.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(8.dp))
-
-            // Round option buttons: visualisation menu, repeat, shuffle, quality.
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box {
-                    RoundButton(Icons.Rounded.GraphicEq, "Visualisation", 40.dp, active = viz != VizMode.OFF) { visualMenu = true }
-                    androidx.compose.material3.DropdownMenu(expanded = visualMenu, onDismissRequest = { visualMenu = false }, containerColor = Ink.Surface) {
-                        VizMode.entries.forEach { v ->
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text(v.label) },
-                                trailingIcon = { if (v == viz) Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) },
-                                onClick = { visualMenu = false; scope.launch { app.settings.update { it.copy(playerVisual = v.name) } } },
-                            )
-                        }
+                if (viz == VizMode.OFF) {
+                    ClassicSeekBar(progress, dragging != null, onDrag, onRelease)
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(elapsed, style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.weight(1f))
+                        Text("-" + formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0)).ifEmpty { "0:00" },
+                            style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
                     }
-                }
-                Spacer(Modifier.width(10.dp))
-                RoundButton(
-                    if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                    when (state.repeatMode) { Player.REPEAT_MODE_ONE -> "Répéter le morceau"; Player.REPEAT_MODE_ALL -> "Répéter tout"; else -> "Pas de répétition" },
-                    40.dp, active = state.repeatMode != Player.REPEAT_MODE_OFF,
-                ) { app.player.cycleRepeat() }
-                Spacer(Modifier.width(10.dp))
-                RoundButton(Icons.Rounded.Shuffle, "Aléatoire", 40.dp, active = state.shuffle) { app.player.toggleShuffle() }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                    quality?.let { q ->
-                        GlassSurface(shape = RoundedCornerShape(50)) {
-                            Text(q, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
-                        }
-                    }
-                }
-            }
-
-            val transport: @Composable () -> Unit = {
-                TransportRow(
-                    playing = state.isPlaying,
-                    onPrev = { app.player.previous() },
-                    onBack = { app.player.seekTo((state.positionMs - 10_000).coerceAtLeast(0)) },
-                    onPlay = { app.player.togglePlay() },
-                    onFwd = { app.player.seekTo((state.positionMs + 10_000).coerceAtMost(state.durationMs)) },
-                    onNext = { app.player.next() },
-                )
-            }
-            when (viz) {
-                VizMode.TRANSPARENT -> {
-                    // The song's waveform behind see-through controls; tap or slide on it to move in the song.
+                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp)) { transport() }
+                } else {
+                    // The song's waveform globe behind see-through controls; slide on it to move in the song.
                     Box(Modifier.fillMaxWidth().height(200.dp).padding(top = 10.dp)) {
                         Box(Modifier.fillMaxSize()) {
                             WaveDrum(waveform, progress, onDrag, onRelease, Modifier.fillMaxSize().padding(bottom = 6.dp))
@@ -218,52 +296,34 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                         Box(Modifier.fillMaxSize().padding(bottom = 14.dp), contentAlignment = Alignment.Center) { transport() }
                     }
                 }
-                VizMode.FULL -> Box(Modifier.fillMaxWidth().padding(vertical = 14.dp)) { transport() }
-                VizMode.OFF -> {
-                    ClassicSeekBar(progress, dragging != null, onDrag, onRelease)
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(elapsed, style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.weight(1f))
-                        Text("-" + formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0)).ifEmpty { "0:00" },
-                            style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+                SpeedRow(state.speed) { app.player.setSpeed(it) }
+                Spacer(Modifier.height(8.dp))
+
+                GlassSurface(Modifier.fillMaxWidth().padding(bottom = 12.dp), RoundedCornerShape(24.dp), strong = true) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        BarButton(Icons.Rounded.Lyrics, "Paroles", active = showLyrics) { showLyrics = !showLyrics }
+                        BarButton(Icons.AutoMirrored.Rounded.QueueMusic, "File") { showQueue = true }
+                        BarButton(Icons.Rounded.Equalizer, "Son", onClick = onOpenSound)
+                        BarButton(Icons.AutoMirrored.Rounded.PlaylistAdd, "Playlist", enabled = current != null) { addToList = true }
                     }
-                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp)) { transport() }
                 }
             }
-            SpeedRow(state.speed) { app.player.setSpeed(it) }
-            Spacer(Modifier.height(8.dp))
+        }
 
-            GlassSurface(Modifier.fillMaxWidth().padding(bottom = 12.dp), RoundedCornerShape(24.dp), strong = true) {
-                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    BarButton(Icons.Rounded.Lyrics, "Paroles", active = showLyrics) { showLyrics = !showLyrics }
-                    BarButton(Icons.AutoMirrored.Rounded.QueueMusic, "File") { showQueue = true }
-                    BarButton(Icons.Rounded.Equalizer, "Son", onClick = onOpenSound)
-                    BarButton(Icons.AutoMirrored.Rounded.PlaylistAdd, "Playlist", enabled = current != null) { addToList = true }
-                }
+        androidx.compose.animation.AnimatedVisibility(
+            immersive, enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(600)),
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250)),
+        ) {
+            // Touching anywhere brings the player back (any touch restarts the 3 s timer above).
+            Box(Modifier.fillMaxSize().background(Color.Black).clickable { immersive = false }) {
+                SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 120.dp))
             }
         }
     }
 
     if (showQueue) {
         ModalBottomSheet(onDismissRequest = { showQueue = false }, containerColor = Ink.Surface) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("File d'attente", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                androidx.compose.material3.TextButton(onClick = { app.player.clearQueue() }, enabled = state.queue.size > 1) { Text("Vider la file") }
-            }
-            LazyColumn(Modifier.fillMaxWidth().height(480.dp)) {
-                itemsIndexed(state.queue) { i, q ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { app.player.skipTo(i) }.padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(q.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (i == state.index) MaterialTheme.colorScheme.primary else Ink.Text)
-                            Text(q.artist, maxLines = 1, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
-                        }
-                        if (i != state.index) IconButton(onClick = { app.player.removeAt(i) }) { Icon(Icons.Rounded.Close, "Retirer de la file") }
-                        else Spacer(Modifier.width(48.dp))
-                    }
-                }
-            }
+            QueueSheet(app, state, tracks)
         }
     }
     if (addToList && current != null) {
@@ -271,6 +331,115 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
             addToList = false
             msg?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
         }
+    }
+}
+
+/** Name of the spectrum look on top of the cover; tap it to choose one (or « Aléatoire »), arrow to try the next. */
+@Composable
+private fun SpectrumPill(style: SpectrumStyle, random: Boolean, onPick: (String) -> Unit, onNext: () -> Unit, modifier: Modifier) {
+    var menu by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.55f))
+                .clickable { menu = true }.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.GraphicEq, null, Modifier.size(22.dp), tint = Color.White)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(style.id, style = MaterialTheme.typography.bodyMedium, color = Color.White, maxLines = 1)
+                Text(if (random) "Aléatoire" else "Choisi", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.75f))
+            }
+            IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Rounded.ArrowForward, "Spectre suivant", tint = Color.White) }
+        }
+        androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Ink.Surface) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Aléatoire (un par chanson)") },
+                leadingIcon = { Icon(Icons.Rounded.Shuffle, null) },
+                trailingIcon = { if (random) Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) },
+                onClick = { menu = false; onPick(SpectrumStyle.RANDOM) },
+            )
+            SpectrumStyle.entries.forEach { s ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(s.id) },
+                    trailingIcon = { if (!random && s == style) Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) },
+                    onClick = { menu = false; onPick(s.name) },
+                )
+            }
+        }
+    }
+}
+
+/** Queue in play order (shuffled order when « Aléatoire » is on): the current track, then what comes next. */
+@Composable
+private fun QueueSheet(app: App, state: PlayerUiState, tracks: List<fr.offlinetune.library.LibTrack>) {
+    val byUri = remember(tracks) { tracks.associateBy { it.uri } }
+    val upcoming = state.queue.withIndex().drop((state.index + 1).coerceAtLeast(0))
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("File d'attente", style = MaterialTheme.typography.headlineSmall)
+                val left = upcoming.sumOf { it.value.durationMs ?: byUri[it.value.mediaId]?.durationMs ?: 0L }
+                Text(
+                    "${upcoming.size} à suivre" + (if (left > 0) " · ${formatDuration(left)}" else "") + (if (state.shuffle) " · aléatoire" else ""),
+                    style = MaterialTheme.typography.bodyMedium, color = Ink.Muted,
+                )
+            }
+            RoundButton(Icons.Rounded.Shuffle, "Aléatoire", 40.dp, active = state.shuffle) { app.player.toggleShuffle() }
+            Spacer(Modifier.width(8.dp))
+            androidx.compose.material3.TextButton(onClick = { app.player.clearQueue() }, enabled = state.queue.size > 1) { Text("Vider") }
+        }
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(Modifier.fillMaxWidth().height(520.dp), state = listState) {
+            state.queue.getOrNull(state.index)?.let { q ->
+                item(key = "now") {
+                    Text("En cours", style = MaterialTheme.typography.labelLarge, color = Ink.Muted, modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 6.dp))
+                    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp), RoundedCornerShape(18.dp), strong = true) {
+                        QueueRow(q, byUri, now = true, playing = state.isPlaying, onClick = { app.player.togglePlay() }, onRemove = null)
+                    }
+                }
+            }
+            if (upcoming.isNotEmpty()) item(key = "next-title") {
+                Text(if (state.shuffle) "À suivre · ordre aléatoire" else "À suivre", style = MaterialTheme.typography.labelLarge, color = Ink.Muted,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp))
+            }
+            items(upcoming.size, key = { "q" + upcoming[it].index + upcoming[it].value.mediaId }) { k ->
+                val (i, q) = upcoming[k]
+                QueueRow(q, byUri, now = false, playing = false, number = k + 1, onClick = { app.player.skipTo(i) }, onRemove = { app.player.removeAt(i) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueRow(
+    q: fr.offlinetune.playback.QueueEntry, byUri: Map<String, fr.offlinetune.library.LibTrack>, now: Boolean, playing: Boolean,
+    number: Int? = null, onClick: () -> Unit, onRemove: (() -> Unit)?,
+) {
+    val t = byUri[q.mediaId]
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(number?.toString() ?: "", style = MaterialTheme.typography.labelMedium, color = Ink.Muted,
+            modifier = Modifier.width(26.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Box {
+            CoverImage(fr.offlinetune.ui.Covers.key(t?.coverUri ?: q.artworkUri, q.mediaId), RoundedCornerShape(10.dp), Modifier.size(50.dp), size = 128)
+            if (now) Box(Modifier.size(50.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+                Icon(if (playing) Icons.Rounded.GraphicEq else Icons.Rounded.Pause, null, tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(q.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium,
+                color = if (now) MaterialTheme.colorScheme.primary else Ink.Text, fontWeight = if (now) FontWeight.Bold else FontWeight.Normal)
+            Text(q.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
+        }
+        (q.durationMs ?: t?.durationMs)?.let { d ->
+            Text(formatDuration(d), style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.padding(horizontal = 6.dp))
+        }
+        if (onRemove != null) IconButton(onClick = onRemove) { Icon(Icons.Rounded.Close, "Retirer de la file", tint = Ink.Muted) }
     }
 }
 

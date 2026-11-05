@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-data class QueueEntry(val mediaId: String, val title: String, val artist: String)
+data class QueueEntry(val mediaId: String, val title: String, val artist: String, val artworkUri: String? = null, val durationMs: Long? = null)
 
 data class PlayerUiState(
     val connected: Boolean = false,
@@ -47,6 +47,13 @@ class PlayerConnection(private val context: Context) {
     private var controller: MediaController? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val pending = mutableListOf<(MediaController) -> Unit>()
+
+    /**
+     * « Aléatoire » really reorders the queue (current track first, the rest shuffled) so the queue shows
+     * what comes next. [original] keeps the list order to put back when shuffle is turned off.
+     */
+    private var shuffled = false
+    private var original: List<MediaItem>? = null
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = refresh()
@@ -89,11 +96,12 @@ class PlayerConnection(private val context: Context) {
             isPlaying = c.isPlaying,
             positionMs = c.currentPosition,
             durationMs = c.duration.coerceAtLeast(0),
-            shuffle = c.shuffleModeEnabled,
+            shuffle = shuffled || c.shuffleModeEnabled,
             repeatMode = c.repeatMode,
             queue = (0 until c.mediaItemCount).map { i ->
                 val it = c.getMediaItemAt(i)
-                QueueEntry(it.mediaId, it.mediaMetadata.title?.toString() ?: "", it.mediaMetadata.artist?.toString() ?: "")
+                QueueEntry(it.mediaId, it.mediaMetadata.title?.toString() ?: "", it.mediaMetadata.artist?.toString() ?: "",
+                    it.mediaMetadata.artworkUri?.toString(), it.mediaMetadata.durationMs)
             },
             index = c.currentMediaItemIndex,
             speed = c.playbackParameters.speed,
@@ -101,7 +109,16 @@ class PlayerConnection(private val context: Context) {
     }
 
     fun playList(tracks: List<PlayableTrack>, startIndex: Int) = withController { c ->
-        c.setMediaItems(tracks.map { it.toMediaItem() }, startIndex, 0)
+        val items = tracks.map { it.toMediaItem() }
+        c.shuffleModeEnabled = false
+        if (shuffled && items.size > 1) {
+            original = items
+            val first = items[startIndex.coerceIn(0, items.lastIndex)]
+            c.setMediaItems(listOf(first) + (items - first).shuffled(), 0, 0)
+        } else {
+            original = null
+            c.setMediaItems(items, startIndex, 0)
+        }
         c.prepare()
         c.play()
     }
@@ -140,7 +157,39 @@ class PlayerConnection(private val context: Context) {
     fun seekTo(ms: Long) = withController { it.seekTo(ms); refresh() }
     fun skipTo(index: Int) = withController { it.seekTo(index, 0); it.play() }
     fun removeAt(index: Int) = withController { it.removeMediaItem(index) }
-    fun toggleShuffle() = withController { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+    fun toggleShuffle() = withController { c ->
+        c.shuffleModeEnabled = false
+        val cur = c.currentMediaItemIndex
+        val items = (0 until c.mediaItemCount).map { c.getMediaItemAt(it) }
+        if (!shuffled) {
+            shuffled = true
+            if (cur < 0 || items.size < 2) { refresh(); return@withController }
+            original = items
+            // Keep the current track playing untouched; replace what is around it.
+            val rest = items.filterIndexed { i, _ -> i != cur }.shuffled()
+            if (cur + 1 < items.size) c.removeMediaItems(cur + 1, items.size)
+            if (cur > 0) c.removeMediaItems(0, cur)
+            c.addMediaItems(1, rest)
+        } else {
+            shuffled = false
+            val orig = original
+            original = null
+            if (orig == null || cur < 0) { refresh(); return@withController }
+            val now = items[cur]
+            val at = orig.indexOfFirst { it.mediaId == now.mediaId }
+            // Tracks added while shuffled are kept, at the end.
+            val known = orig.map { it.mediaId }.toSet()
+            val extra = items.filter { it.mediaId !in known }
+            val stillThere = items.map { it.mediaId }.toSet()
+            val before = if (at >= 0) orig.subList(0, at).filter { it.mediaId in stillThere } else emptyList()
+            val after = (if (at >= 0) orig.subList(at + 1, orig.size) else orig).filter { it.mediaId in stillThere && it.mediaId != now.mediaId } + extra
+            if (cur + 1 < items.size) c.removeMediaItems(cur + 1, items.size)
+            if (cur > 0) c.removeMediaItems(0, cur)
+            if (before.isNotEmpty()) c.addMediaItems(0, before)
+            if (after.isNotEmpty()) c.addMediaItems(after)
+        }
+        refresh()
+    }
     fun cycleRepeat() = withController {
         it.repeatMode = when (it.repeatMode) {
             Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL

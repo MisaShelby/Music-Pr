@@ -12,6 +12,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import fr.offlinetune.ui.sound.SoundScreen
 
 private val DESTS = listOf(
     NavItem("Bibliothèque", Icons.Rounded.LibraryMusic),
+    NavItem("Rechercher", Icons.Rounded.Search),
     NavItem("Télécharger", Icons.Rounded.Download),
     NavItem("Son", Icons.Rounded.Equalizer),
     NavItem("Réglages", Icons.Rounded.Settings),
@@ -64,7 +66,7 @@ fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
 
     LaunchedEffect(Unit) { app.player.connect() }
     LaunchedEffect(sharedText) {
-        if (sharedText != null) { pendingShare = sharedText; tab = 1; playerOpen = false; onSharedConsumed() }
+        if (sharedText != null) { pendingShare = sharedText; tab = 2; playerOpen = false; onSharedConsumed() }
     }
     BackHandler(enabled = playerOpen) { playerOpen = false }
 
@@ -83,13 +85,14 @@ fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
         ) { padding ->
             when (tab) {
                 0 -> LibraryScreen(padding)
-                1 -> DownloadScreen(padding, pendingShare) { pendingShare = null }
-                2 -> SoundScreen(padding)
+                1 -> LibraryScreen(padding, searchMode = true)
+                2 -> DownloadScreen(padding, pendingShare) { pendingShare = null }
+                3 -> SoundScreen(padding)
                 else -> SettingsScreen(padding)
             }
         }
         AnimatedVisibility(playerOpen && state.mediaId != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            PlayerScreen(app, state, coverKey, tracks.firstOrNull { it.uri == state.mediaId }?.lrcUri, onClose = { playerOpen = false }, onOpenSound = { tab = 2; playerOpen = false })
+            PlayerScreen(app, state, coverKey, tracks.firstOrNull { it.uri == state.mediaId }?.lrcUri, onClose = { playerOpen = false }, onOpenSound = { tab = 3; playerOpen = false })
         }
     }
 }

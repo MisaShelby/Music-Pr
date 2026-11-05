@@ -25,6 +25,8 @@ data class AppSettings(
     val auddToken: String? = null,
     /** Waveform display in the player: OFF, TRANSPARENT (behind see-through controls), FULL (instead of the cover). */
     val playerVisual: String = "TRANSPARENT",
+    /** Live spectrum look (SpectrumStyle name) or RANDOM = a different one for each song. */
+    val spectrumStyle: String = "RANDOM",
     val pauseFade: Boolean = true,
     val autoLyrics: Boolean = true,
     val dsp: DspSettings = DspSettings(),
