@@ -288,14 +288,14 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                     )
                 }
                 if (viz == VizMode.OFF) {
-                    // Visualisation désactivée: the song's bars (spectrum-centered-wide look) are the seek bar.
-                    WaveSeekBar(waveform, progress, Modifier.fillMaxWidth().height(84.dp).padding(vertical = 6.dp), count = 30, onDrag = onDrag, onRelease = onRelease)
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(elapsed, style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.weight(1f))
-                        Text("-" + formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0)).ifEmpty { "0:00" },
-                            style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+                    // Visualisation désactivée: the song's wide bars turning like a globe, the controls inside them.
+                    Box(Modifier.fillMaxWidth().height(240.dp).padding(top = 10.dp)) {
+                        Box(Modifier.fillMaxSize()) {
+                            WaveDrum(waveform, progress, onDrag, onRelease, Modifier.fillMaxSize().padding(bottom = 6.dp), half = 9f, playedColor = SpectrumBlue)
+                            TimeCorners(elapsed, total, dragging != null)
+                        }
+                        Box(Modifier.fillMaxSize().padding(bottom = 14.dp), contentAlignment = Alignment.Center) { transport() }
                     }
-                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp)) { transport() }
                 } else {
                     // The song's waveform globe behind see-through controls; slide on it to move in the song.
                     Box(Modifier.fillMaxWidth().height(200.dp).padding(top = 10.dp)) {

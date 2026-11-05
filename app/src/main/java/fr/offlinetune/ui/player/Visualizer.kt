@@ -173,7 +173,10 @@ fun rememberSmoothProgress(positionMs: Long, durationMs: Long, playing: Boolean,
  * when you let go), or tap a bar to roll to it.
  */
 @Composable
-fun WaveDrum(bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRelease: () -> Unit, modifier: Modifier = Modifier) {
+fun WaveDrum(
+    bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRelease: () -> Unit, modifier: Modifier = Modifier,
+    half: Float = DRUM_HALF, playedColor: Color? = null,
+) {
     val accent = MaterialTheme.colorScheme.primary
     val scope = rememberCoroutineScope()
     val anim = remember { Animatable(0f) }
@@ -189,7 +192,7 @@ fun WaveDrum(bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRele
                 detectTapGestures(onTap = { o ->
                     val r = size.width / 2f
                     val angle = asin(((o.x - r) / r).coerceIn(-1f, 1f))
-                    val target = (current + angle / quarter * DRUM_HALF / count).coerceIn(0f, 1f)
+                    val target = (current + angle / quarter * half / count).coerceIn(0f, 1f)
                     scope.launch {
                         anim.snapTo(current)
                         anim.animateTo(target, tween(520, easing = FastOutSlowInEasing)) { drag(value) }
@@ -200,7 +203,7 @@ fun WaveDrum(bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRele
             .pointerInput(Unit) {
                 val tracker = VelocityTracker()
                 var pos = 0f
-                fun perPx() = DRUM_HALF / quarter / (size.width / 2f) / count
+                fun perPx() = half / quarter / (size.width / 2f) / count
                 detectHorizontalDragGestures(
                     onDragStart = { tracker.resetTracking(); pos = current; scope.launch { anim.stop() }; drag(pos) },
                     onDragEnd = {
@@ -226,15 +229,15 @@ fun WaveDrum(bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRele
         val c = progress * n
         val r = size.width / 2f
         val mid = size.height / 2
-        val baseW = (quarter * r / DRUM_HALF) * 0.62f
+        val baseW = (quarter * r / half) * 0.62f
         val lo = bars?.minOrNull() ?: 0f
         val span = ((bars?.maxOrNull() ?: 1f) - lo).coerceAtLeast(0.05f)
         val playedBottom = lerpColor(accent, Color.White, 0.35f)
-        val from = floor(c - DRUM_HALF).toInt() - 1
-        val to = ceil(c + DRUM_HALF).toInt() + 1
+        val from = floor(c - half).toInt() - 1
+        val to = ceil(c + half).toInt() + 1
         for (i in from..to) {
             if (i < 0 || i >= n) continue
-            val angle = (i + 0.5f - c) / DRUM_HALF * quarter
+            val angle = (i + 0.5f - c) / half * quarter
             if (abs(angle) >= quarter) continue
             val depth = cos(angle) // 1 in front, 0 at the edge of the globe
             val x = r + r * sin(angle)
@@ -243,7 +246,9 @@ fun WaveDrum(bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRele
             val h = ((0.42f + 0.58f * v) * size.height * (0.78f + 0.22f * depth)).coerceAtLeast(w)
             val top = mid - h / 2
             val alpha = 0.18f + 0.82f * depth
-            if (i + 0.5f <= c) drawRoundRect(
+            if (i + 0.5f <= c && playedColor != null) drawRoundRect(
+                playedColor.copy(alpha = alpha), Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2),
+            ) else if (i + 0.5f <= c) drawRoundRect(
                 Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.97f * alpha), playedBottom.copy(alpha = 0.97f * alpha)), startY = top, endY = top + h),
                 Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2),
             ) else drawRoundRect(Color.White.copy(alpha = 0.42f * alpha), Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2))
