@@ -205,7 +205,7 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                 val elapsed = formatDuration(dragging?.let { (it * dur).toLong() } ?: state.positionMs).ifEmpty { "0:00" }
                 val total = formatDuration(state.durationMs).ifEmpty { "0:00" }
 
-                Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp, bottom = 16.dp), contentAlignment = Alignment.Center) {
                     if (showLyrics) {
                         // Lyrics take the cover's and the title's place.
                         LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) })
@@ -217,9 +217,9 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                             if (viz == VizMode.TRANSPARENT && immersive) 1f else 0f, androidx.compose.animation.core.tween(700), label = "front",
                         )
                         if (viz == VizMode.TRANSPARENT && front < 1f) {
-                            SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer(scaleX = 1.12f, scaleY = 1.12f), palette, 0.75f * (1f - front))
+                            SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().aspectRatio(1f, matchHeightConstraintsFirst = true), palette, 0.75f * (1f - front))
                         }
-                        Box(Modifier.fillMaxWidth().aspectRatio(1f).shadow(28.dp, shape).clip(shape)) {
+                        Box(Modifier.fillMaxSize().aspectRatio(1f, matchHeightConstraintsFirst = true).padding(if (viz == VizMode.TRANSPARENT) 14.dp else 0.dp).shadow(12.dp, shape).clip(shape)) {
                             CoverImage(coverKey, shape, Modifier.fillMaxSize(), size = 1024)
                             if (front > 0f) {
                                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f * front)))
