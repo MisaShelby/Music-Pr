@@ -294,7 +294,7 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                     // Visualisation désactivée: the song's wide bars turning like a globe, the controls inside them.
                     Box(Modifier.fillMaxWidth().height(240.dp).padding(top = 10.dp)) {
                         Box(Modifier.fillMaxSize()) {
-                            WaveDrum(waveform, progress, onDrag, onRelease, Modifier.fillMaxSize().padding(bottom = 6.dp), half = 9f, playedColor = SpectrumBlue)
+                            WaveDrum(waveform, progress, onDrag, onRelease, Modifier.fillMaxSize().padding(bottom = 6.dp), half = 9f, playedColors = palette)
                             TimeCorners(elapsed, total, dragging != null)
                         }
                         Box(Modifier.fillMaxSize().padding(bottom = 14.dp), contentAlignment = Alignment.Center) { transport() }

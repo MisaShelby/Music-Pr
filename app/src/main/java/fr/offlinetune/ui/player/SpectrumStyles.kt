@@ -111,7 +111,7 @@ fun coverPalette(bmp: android.graphics.Bitmap?): List<Color> {
 }
 
 /** Colour of the bar at [t] (0 = left, 1 = right), blending the palette across the width. */
-private fun List<Color>.at(t: Float): Color {
+internal fun List<Color>.at(t: Float): Color {
     if (size == 1) return this[0]
     val p = t.coerceIn(0f, 1f) * (size - 1)
     val i = p.toInt().coerceAtMost(size - 2)

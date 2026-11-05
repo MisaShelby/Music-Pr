@@ -175,7 +175,7 @@ fun rememberSmoothProgress(positionMs: Long, durationMs: Long, playing: Boolean,
 @Composable
 fun WaveDrum(
     bars: FloatArray?, progress: Float, onDrag: (Float) -> Unit, onRelease: () -> Unit, modifier: Modifier = Modifier,
-    half: Float = DRUM_HALF, playedColor: Color? = null,
+    half: Float = DRUM_HALF, playedColors: List<Color>? = null,
 ) {
     val accent = MaterialTheme.colorScheme.primary
     val scope = rememberCoroutineScope()
@@ -246,8 +246,8 @@ fun WaveDrum(
             val h = ((0.42f + 0.58f * v) * size.height * (0.78f + 0.22f * depth)).coerceAtLeast(w)
             val top = mid - h / 2
             val alpha = 0.18f + 0.82f * depth
-            if (i + 0.5f <= c && playedColor != null) drawRoundRect(
-                playedColor.copy(alpha = alpha), Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2),
+            if (i + 0.5f <= c && playedColors != null) drawRoundRect(
+                playedColors.at(x / size.width).copy(alpha = alpha), Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2),
             ) else if (i + 0.5f <= c) drawRoundRect(
                 Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.97f * alpha), playedBottom.copy(alpha = 0.97f * alpha)), startY = top, endY = top + h),
                 Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2),
