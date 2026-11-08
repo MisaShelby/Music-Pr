@@ -8,6 +8,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -145,13 +152,14 @@ fun LibraryScreen(contentPadding: PaddingValues, searchMode: Boolean = false) {
     var toDelete by remember { mutableStateOf<List<LibTrack>?>(null) }
     var missing by remember { mutableStateOf<List<LibTrack>?>(null) }
 
-    // Scan once per app start; afterwards only with « Actualiser » (not on every tab switch).
-    LaunchedEffect(Unit) { app.library.loadCache(); app.library.refreshOnce() }
+    // Saved library at start; the folder is searched only with « Actualiser » (or on first use).
+    LaunchedEffect(Unit) { app.library.loadCache(); app.library.startupAsync() }
+    val found by app.library.found.collectAsState()
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri != null) {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            scope.launch { app.settings.update { it.copy(libraryTreeUri = uri.toString()) }; app.library.refresh() }
+            scope.launch { app.settings.update { it.copy(libraryTreeUri = uri.toString()) }; app.library.refreshAsync() }
         }
     }
 
@@ -201,18 +209,24 @@ fun LibraryScreen(contentPadding: PaddingValues, searchMode: Boolean = false) {
                 )
                 IconButton(onClick = {
                     scope.launch {
-                        app.library.refresh()
+                        app.library.refreshAsync().join()
                         missing = app.library.missingCover().takeIf { it.isNotEmpty() }
                     }
                 }) { Icon(Icons.Rounded.Refresh, "Actualiser") }
             }
         }
-        if (state == LibState.Scanning) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+        if (state == LibState.Scanning) {
+            LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+            if (found > 0) Text(
+                "Recherche de vos musiques… $found trouvée${if (found > 1) "s" else ""}",
+                style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.padding(horizontal = 20.dp),
+            )
+        }
         // The saved folder stays chosen: if it cannot be read right now, keep showing the known tracks.
         if ((state == LibState.NeedsFolder || state is LibState.Error) && tracks.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Dossier momentanément inaccessible.", style = MaterialTheme.typography.bodyMedium, color = Ink.Muted, modifier = Modifier.weight(1f))
-                androidx.compose.material3.TextButton(onClick = { scope.launch { app.library.refresh() } }) { Text("Réessayer") }
+                androidx.compose.material3.TextButton(onClick = { app.library.refreshAsync() }) { Text("Réessayer") }
                 androidx.compose.material3.TextButton(onClick = { pickFolder.launch(null) }) { Text("Changer") }
             }
         }
@@ -239,7 +253,10 @@ fun LibraryScreen(contentPadding: PaddingValues, searchMode: Boolean = false) {
         when {
             (state == LibState.NeedsFolder || state is LibState.Error) && tracks.isEmpty() -> EmptyLibrary(
                 (state as? LibState.Error)?.message ?: "Choisissez le dossier où se trouve votre musique sur le téléphone.",
+                onRetry = if (settings.libraryTreeUri != null) ({ app.library.refreshAsync() }) else null,
             ) { pickFolder.launch(null) }
+            state == LibState.Scanning && tracks.isEmpty() && detail == null && !searchMode ->
+                EmptyHint("Recherche de vos musiques dans le dossier…" + (if (found > 0) "\n$found trouvée${if (found > 1) "s" else ""}" else ""))
             detail is Detail.Playlist -> PlaylistDetail(app, (detail as Detail.Playlist).uri, onGone = { detail = null }, onRenamed = { f -> detail = Detail.Playlist(f.uri, f.name) })
             detail != null -> {
                 val list = when (val d = detail!!) {
@@ -441,17 +458,30 @@ private fun TrackList(
 ) {
     val current by app.player.state.collectAsState()
     if (grid) {
-        LazyVerticalGrid(
-            GridCells.Fixed(2), Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            itemsIndexed(list, key = { i, t -> "$i:${t.uri}" }) { i, t ->
-                TrackCard(t, current.mediaId == t.uri, t.uri in selection, onClick = { onTrack(list, i) }, onLong = { onLong(t) })
+        val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+        Box(Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                GridCells.Fixed(2), Modifier.fillMaxSize(), state = gridState, contentPadding = PaddingValues(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                itemsIndexed(list, key = { i, t -> "$i:${t.uri}" }) { i, t ->
+                    TrackCard(t, current.mediaId == t.uri, t.uri in selection, onClick = { onTrack(list, i) }, onLong = { onLong(t) })
+                }
             }
+            FastScroller(
+                firstVisible = gridState.firstVisibleItemIndex, visibleCount = gridState.layoutInfo.visibleItemsInfo.size,
+                total = list.size, scrolling = gridState.isScrollInProgress,
+                scrollTo = { gridState.scrollToItem(it) }, label = { list.getOrNull(it)?.let { t -> scrollLetter(t.title) } },
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
         }
         return
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // The « Lecture aléatoire » line comes before the songs.
+    val head = if (list.size > 1 && selection.isEmpty()) 1 else 0
+    Box(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
         if (list.size > 1 && selection.isEmpty()) item {
             Row(
                 Modifier.fillMaxWidth().clickable { app.player.playList(list.shuffled().map { it.playable() }, 0) }.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -470,6 +500,13 @@ private fun TrackList(
             ) { onTrack(list, i) }
         }
     }
+    FastScroller(
+        firstVisible = listState.firstVisibleItemIndex, visibleCount = listState.layoutInfo.visibleItemsInfo.size,
+        total = list.size + head, scrolling = listState.isScrollInProgress,
+        scrollTo = { listState.scrollToItem(it) }, label = { i -> list.getOrNull(i - head)?.let { t -> scrollLetter(t.title) } },
+        modifier = Modifier.align(Alignment.TopEnd),
+    )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -479,48 +516,125 @@ fun TrackRow(
     onLongClick: (() -> Unit)? = null, onClick: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val accent = MaterialTheme.colorScheme.primary
     Row(
         Modifier.fillMaxWidth()
-            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                when {
+                    selected -> accent.copy(alpha = 0.18f)
+                    playing -> accent.copy(alpha = 0.10f)
+                    else -> Color.Transparent
+                },
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(start = 10.dp, end = 2.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            CoverImage(Covers.key(t.coverUri, t.uri), RoundedCornerShape(8.dp), Modifier.size(48.dp), size = 128)
-            if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.BottomEnd).size(18.dp))
+            CoverImage(Covers.key(t.coverUri, t.uri), RoundedCornerShape(12.dp), Modifier.size(60.dp), size = 160)
+            if (playing) Box(
+                Modifier.size(60.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Rounded.GraphicEq, null, tint = accent, modifier = Modifier.size(26.dp)) }
+            if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = accent, modifier = Modifier.align(Alignment.BottomEnd).size(20.dp))
         }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
-                t.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium,
-                color = if (playing) MaterialTheme.colorScheme.primary else Ink.Text,
+                t.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp), fontWeight = FontWeight.SemiBold,
+                color = if (playing) accent else Ink.Text,
             )
-            Text(t.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
+            Text(
+                listOfNotNull(t.artist, t.album?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = Ink.Muted,
+            )
         }
-        Text(extra ?: formatDuration(t.durationMs), style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+        Spacer(Modifier.width(8.dp))
+        Text(extra ?: formatDuration(t.durationMs), style = MaterialTheme.typography.labelLarge, color = Ink.Muted)
         if (actions != null) {
-            Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "Plus d'actions") }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    MenuItem(Icons.AutoMirrored.Rounded.PlaylistAdd, "Ajouter à une liste de lecture") { menu = false; actions.addToPlaylist(t) }
-                    MenuItem(Icons.Rounded.SkipNext, "Lire après le morceau en cours") { menu = false; actions.playNext(t) }
-                    MenuItem(Icons.Rounded.SouthEast, "Ajouter à la fin de la file") { menu = false; actions.addToEnd(t) }
-                    MenuItem(Icons.Rounded.Share, "Partager") { menu = false; actions.share(t) }
-                    MenuItem(Icons.Rounded.Info, "Infos (modifier)") { menu = false; actions.info(t) }
-                    MenuItem(Icons.Rounded.Delete, "Supprimer du téléphone", danger = true) { menu = false; actions.delete(t) }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "Plus d'actions", tint = Ink.Muted) }
+            if (menu) TrackActionsSheet(t, playing, actions) { menu = false }
+        }
+    }
+}
+
+/**
+ * The 3-dot menu of a song: a sheet with the song itself on top (cover, title, artist, album, length),
+ * quick actions as big tiles, then the details and the delete action set apart.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun TrackActionsSheet(t: LibTrack, playing: Boolean, actions: TrackActions, onDismiss: () -> Unit) {
+    val accent = MaterialTheme.colorScheme.primary
+    fun run(a: (LibTrack) -> Unit) { onDismiss(); a(t) }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Ink.Surface) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CoverImage(Covers.key(t.coverUri, t.uri), RoundedCornerShape(16.dp), Modifier.size(84.dp), size = 256)
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(t.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = if (playing) accent else Ink.Text)
+                    Text(t.artist, style = MaterialTheme.typography.bodyLarge, color = Ink.Text.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val meta = listOfNotNull(
+                        t.album?.takeIf { it.isNotBlank() }, t.year?.toString(), formatDuration(t.durationMs).ifEmpty { null },
+                        t.pathSegments.lastOrNull()?.substringAfterLast('.', "")?.uppercase()?.ifEmpty { null },
+                    )
+                    if (meta.isNotEmpty()) Text(meta.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = Ink.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
+            Spacer(Modifier.height(20.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ActionTile(Icons.Rounded.SkipNext, "Lire après", Modifier.weight(1f)) { run(actions.playNext) }
+                ActionTile(Icons.AutoMirrored.Rounded.QueueMusic, "À la fin", Modifier.weight(1f)) { run(actions.addToEnd) }
+                ActionTile(Icons.AutoMirrored.Rounded.PlaylistAdd, "Playlist", Modifier.weight(1f)) { run(actions.addToPlaylist) }
+                ActionTile(Icons.Rounded.Share, "Partager", Modifier.weight(1f)) { run(actions.share) }
+            }
+            Spacer(Modifier.height(16.dp))
+            SheetItem(Icons.Rounded.Info, "Infos et modification", "Titre, artiste, album, pochette, paroles") { run(actions.info) }
+            androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 6.dp), color = Color.White.copy(alpha = 0.08f))
+            SheetItem(Icons.Rounded.Delete, "Supprimer du téléphone", "Le fichier est effacé définitivement", danger = true) { run(actions.delete) }
         }
     }
 }
 
 @Composable
-private fun MenuItem(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(label, color = if (danger) MaterialTheme.colorScheme.error else Ink.Text) },
-        leadingIcon = { Icon(icon, null, tint = if (danger) MaterialTheme.colorScheme.error else Ink.Muted) },
-        onClick = onClick,
-    )
+private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+    val accent = MaterialTheme.colorScheme.primary
+    Column(
+        modifier.clip(RoundedCornerShape(18.dp))
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.04f))))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick).padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(42.dp).clip(CircleShape).background(accent.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = accent, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = Ink.Text, maxLines = 1)
+    }
+}
+
+@Composable
+private fun SheetItem(icon: ImageVector, label: String, sub: String, danger: Boolean = false, onClick: () -> Unit) {
+    val tint = if (danger) MaterialTheme.colorScheme.error else Ink.Text
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(if (danger) tint.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, null, tint = if (danger) tint else Ink.Muted, modifier = Modifier.size(20.dp)) }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.titleMedium, color = tint)
+            Text(sub, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -576,11 +690,13 @@ private fun GroupList(groups: List<Group>, grid: Boolean, onOpen: (Group) -> Uni
 }
 
 @Composable
-private fun EmptyLibrary(message: String, onPick: () -> Unit) {
+private fun EmptyLibrary(message: String, onRetry: (() -> Unit)? = null, onPick: () -> Unit) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text(message, style = MaterialTheme.typography.bodyLarge, color = Ink.Muted)
-            Button(onClick = onPick) { Text("Choisir le dossier de musique") }
+            if (onRetry != null) Button(onClick = onRetry) { Text("Réessayer maintenant") }
+            if (onRetry != null) TextButton(onClick = onPick) { Text("Choisir un autre dossier") }
+            else Button(onClick = onPick) { Text("Choisir le dossier de musique") }
         }
     }
 }

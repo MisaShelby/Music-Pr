@@ -20,13 +20,14 @@ class SourceResolverTest {
         return SongResult(h.title, h.artist, h.album, h.durationSec, h.coverUrl, mapOf(Provider.DEEZER to h))
     }
 
-    @Test fun `paid-only song gets a youtube match, paid platform is listen-only`() = runBlocking {
+    @Test fun `paid-only song gets a youtube match, shown under the paid platform's name`() = runBlocking {
         val src = resolver.resolve(deezerOnly("daft punk harder better faster stronger"))
         val opt = src.downloadable.single()
         assertTrue(opt.isMatch)
         assertEquals(Provider.YOUTUBE_MUSIC, opt.provider)
         assertEquals(Container.OGG_OPUS, opt.format.container)
-        assertEquals(listOf(Provider.DEEZER), src.listenOnly.map { it.provider })
+        assertEquals(Provider.DEEZER, opt.shownAs?.provider)
+        assertTrue(src.listenOnly.isEmpty())
         assertTrue(src.downloadable.none { !it.provider.downloadable })
     }
 

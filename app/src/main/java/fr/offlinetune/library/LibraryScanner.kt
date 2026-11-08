@@ -52,20 +52,30 @@ class LibraryScanner(private val tags: (uri: String) -> TagData?) {
 
     fun scan(root: TreeNode, previous: Map<String, LibTrack>): List<LibTrack> = scanAll(root, previous).tracks
 
-    fun scanAll(root: TreeNode, previous: Map<String, LibTrack>, rootSegments: List<String> = emptyList()): ScanResult {
+    /**
+     * [onProgress] is called (on the scanning thread) after each track found, with the tracks found so far:
+     * lets the library show songs while a long first scan is still reading tags.
+     */
+    fun scanAll(
+        root: TreeNode, previous: Map<String, LibTrack>, rootSegments: List<String> = emptyList(),
+        onProgress: ((List<LibTrack>) -> Unit)? = null,
+    ): ScanResult {
         val out = mutableListOf<LibTrack>()
         val lists = mutableListOf<PlaylistFile>()
-        walk(root, previous, out, lists, rootSegments)
+        walk(root, previous, out, lists, rootSegments, onProgress)
         return ScanResult(out, lists)
     }
 
-    private fun walk(dir: TreeNode, previous: Map<String, LibTrack>, out: MutableList<LibTrack>, lists: MutableList<PlaylistFile>, segs: List<String>) {
+    private fun walk(
+        dir: TreeNode, previous: Map<String, LibTrack>, out: MutableList<LibTrack>, lists: MutableList<PlaylistFile>, segs: List<String>,
+        onProgress: ((List<LibTrack>) -> Unit)?,
+    ) {
         val kids = try { dir.children() } catch (e: Exception) { return }
         val byName = kids.associateBy { it.name.lowercase() }
         val cover = COVER_NAMES.firstNotNullOfOrNull { byName[it] }?.uri
         for (k in kids) {
             if (k.name.startsWith(".")) continue
-            if (k.isDir) { walk(k, previous, out, lists, segs + k.name); continue }
+            if (k.isDir) { walk(k, previous, out, lists, segs + k.name, onProgress); continue }
             val ext = k.name.substringAfterLast('.', "").lowercase()
             if (ext == "m3u8" || ext == "m3u") { lists += PlaylistFile(k.uri, k.name.substringBeforeLast('.'), segs); continue }
             if (ext !in AUDIO) continue
@@ -74,9 +84,11 @@ class LibraryScanner(private val tags: (uri: String) -> TagData?) {
             val prev = previous[k.uri]
             if (prev != null && prev.lastModified == k.lastModified && (prev.hasArtwork != null || cover != null)) {
                 out += prev.copy(lrcUri = lrc, coverUri = cover, pathSegments = segs + k.name, hasArtwork = cover != null || prev.hasArtwork == true)
+                onProgress?.invoke(out)
                 continue
             }
             out += track(k, base, lrc, cover).copy(pathSegments = segs + k.name)
+            onProgress?.invoke(out)
         }
     }
 

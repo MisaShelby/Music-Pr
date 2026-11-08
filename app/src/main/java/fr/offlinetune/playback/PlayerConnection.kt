@@ -53,24 +53,52 @@ class PlayerConnection(private val context: Context) {
      * what comes next. [original] keeps the list order to put back when shuffle is turned off.
      */
     private var shuffled = false
+        set(v) { field = v; SessionStore.shuffled = v }
     private var original: List<MediaItem>? = null
+        set(v) { field = v; SessionStore.original = v?.map { it.mediaId } }
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = refresh()
     }
 
+    private var connecting = false
+    private var ticker: kotlinx.coroutines.Job? = null
+
+    /** The service ended (app closed): drop the connection; the next start reconnects to the restored session. */
+    private val controllerListener = object : MediaController.Listener {
+        override fun onDisconnected(controller: MediaController) {
+            if (this@PlayerConnection.controller === controller) this@PlayerConnection.controller = null
+            _state.value = PlayerUiState()
+        }
+    }
+
+    /** After a restore, take back the « Aléatoire » state saved with the session. */
+    private fun adoptSavedShuffle(c: MediaController) {
+        if (shuffled || !SessionStore.shuffled || c.mediaItemCount == 0) return
+        val items = (0 until c.mediaItemCount).map { c.getMediaItemAt(it) }
+        val order = SessionStore.original
+        shuffled = true
+        original = order?.let { ids ->
+            val byId = items.associateBy { it.mediaId }
+            ids.mapNotNull { byId[it] }.ifEmpty { null }
+        }
+    }
+
     fun connect() {
-        if (controller != null) return
+        if (controller != null || connecting) return
+        connecting = true
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        val future = MediaController.Builder(context, token).buildAsync()
+        val future = MediaController.Builder(context, token).setListener(controllerListener).buildAsync()
         future.addListener({
+            connecting = false
             val c = runCatching { future.get() }.getOrNull() ?: return@addListener
             controller = c
             c.addListener(listener)
+            adoptSavedShuffle(c)
             pending.forEach { it(c) }; pending.clear()
             refresh()
         }, ContextCompat.getMainExecutor(context))
-        scope.launch {
+        if (ticker?.isActive != true) ticker = scope.launch {
             while (true) {
                 if (_state.value.isPlaying) refresh()
                 delay(250)

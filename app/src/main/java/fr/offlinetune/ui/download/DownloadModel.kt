@@ -45,6 +45,8 @@ data class SheetEdit(
     val includeLyrics: Boolean = true,
     /** Playlists the track will be added to once downloaded. */
     val playlistUris: Set<String> = emptySet(),
+    /** Platform shown as the song's source (« Apple Music »…) when the audio comes from a match. */
+    val shownAs: String? = null,
     val busy: String? = null,
     val error: String? = null,
 )
@@ -183,6 +185,12 @@ class DownloadModel(
         }
     }
 
+    /** Listen to a found song without downloading it. */
+    suspend fun listenStream(song: SongResult) = resolver.listen(song)
+
+    /** Listen to one exact source (the one that would be downloaded). */
+    suspend fun sourceStream(url: String) = resolver.streamOf(url)
+
     fun setFilter(p: Provider?) = _phase.update { if (it is DlPhase.Federated) it.copy(filter = p) else it }
 
     fun openSong(song: SongResult) = openAnySong(song)
@@ -191,7 +199,7 @@ class DownloadModel(
         val src = phase.value as? DlPhase.Sources ?: return
         launch(DlPhase.Loading("Préparation de la fiche…")) {
             val sheet = service.fromSong(src.song, option)
-            DlPhase.Editing(SheetEdit(sheet, sheet.info), src)
+            DlPhase.Editing(SheetEdit(sheet, sheet.info, shownAs = option.shownAs?.provider?.label), src)
         }
     }
 

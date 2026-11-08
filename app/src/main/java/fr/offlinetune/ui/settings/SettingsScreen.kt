@@ -64,7 +64,7 @@ fun SettingsScreen(padding: PaddingValues) {
     val pickLibrary = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             persist(uri)
-            scope.launch { app.settings.update { it.copy(libraryTreeUri = uri.toString()) }; app.library.refresh() }
+            scope.launch { app.settings.update { it.copy(libraryTreeUri = uri.toString()) }; app.library.refreshAsync() }
         }
     }
     val pickDownload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -111,6 +111,27 @@ fun SettingsScreen(padding: PaddingValues) {
             s.autoMix,
         ) { v -> update { it.copy(autoMix = v) } }
         Toggle("Fondu à la pause et à la reprise", "Le son baisse doucement au lieu de s'arrêter net.", s.pauseFade) { v -> update { it.copy(pauseFade = v) } }
+        val ctx = LocalContext.current
+        val overlayOk = android.provider.Settings.canDrawOverlays(ctx)
+        Toggle(
+            "Écran de verrouillage avec spectre",
+            "Pendant la lecture, l'écran verrouillé affiche l'heure, la pochette, le spectre animé et les boutons. " +
+                "Glissez vers le haut pour déverrouiller." +
+                if (s.lockScreenPlayer && !overlayOk) " Autorisation « Affichage par-dessus les autres applis » manquante : touchez pour l'accorder." else "",
+            s.lockScreenPlayer,
+        ) { v ->
+            update { it.copy(lockScreenPlayer = v) }
+            // Android only lets the app show its screen when the phone goes to sleep with this permission.
+            if (v && !android.provider.Settings.canDrawOverlays(ctx)) {
+                ctx.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + ctx.packageName))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+
+        Group("Paroles")
+        LyricsFillRow(app)
 
         Group("Téléchargement")
         Toggle("Paroles automatiques", "Cherche les paroles sur LRCLIB pour chaque fiche.", s.autoLyrics) { v -> update { it.copy(autoLyrics = v) } }
@@ -186,5 +207,43 @@ private fun Toggle(title: String, subtitle: String, checked: Boolean, onChange: 
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
         }
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/** « Ajouter les paroles à toute la bibliothèque », with its progress and result. */
+@Composable
+private fun LyricsFillRow(app: App) {
+    val st by app.lyricsFiller.state.collectAsState()
+    val tracks by app.library.tracks.collectAsState()
+    val without = tracks.count { it.lrcUri == null }
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        Text("Paroles pour toute la bibliothèque", style = MaterialTheme.typography.titleMedium)
+        Text(
+            when (val x = st) {
+                is fr.offlinetune.library.LyricsFillState.Running -> "Recherche sur LRCLIB… ${x.done} / ${x.total} · ${x.found} trouvée(s)"
+                is fr.offlinetune.library.LyricsFillState.Finished ->
+                    "Terminé : ${x.found} parole(s) ajoutée(s), ${x.missing} morceau(x) sans parole connue" +
+                        (if (x.failed > 0) ", ${x.failed} erreur(s)" else "") + "."
+                is fr.offlinetune.library.LyricsFillState.Error -> x.message
+                else -> "${tracks.size - without} morceau(x) sur ${tracks.size} ont déjà des paroles. Les autres sont cherchés sur LRCLIB " +
+                    "(synchronisées si possible) et enregistrés en fichier .lrc à côté de la musique."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (st is fr.offlinetune.library.LyricsFillState.Error) MaterialTheme.colorScheme.error else Ink.Muted,
+        )
+        val running = st is fr.offlinetune.library.LyricsFillState.Running
+        if (running) {
+            val r = st as fr.offlinetune.library.LyricsFillState.Running
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { if (r.total == 0) 1f else r.done.toFloat() / r.total },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            )
+        }
+        Row(Modifier.padding(top = 6.dp)) {
+            if (running) androidx.compose.material3.OutlinedButton(onClick = { app.lyricsFiller.cancel() }) { Text("Arrêter") }
+            else androidx.compose.material3.Button(onClick = { app.lyricsFiller.start() }, enabled = without > 0) {
+                Text(if (without > 0) "Chercher les paroles ($without morceaux)" else "Tous les morceaux ont des paroles")
+            }
+        }
     }
 }

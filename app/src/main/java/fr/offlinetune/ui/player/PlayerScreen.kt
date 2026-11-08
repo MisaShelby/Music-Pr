@@ -14,6 +14,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -116,7 +117,10 @@ fun qualityLabel(context: Context, uri: String): String? {
 /** Now playing: cover with the live spectrum, the song's waveform globe behind the controls, glass bar at the bottom. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: String?, onClose: () -> Unit, onOpenSound: () -> Unit) {
+fun PlayerScreen(
+    app: App, state: PlayerUiState, coverKey: String?, lrcUri: String?, onClose: () -> Unit, onOpenSound: () -> Unit,
+    fullSpectrum: Boolean = false, onFullSpectrumShown: () -> Unit = {},
+) {
     val context = LocalContext.current
     var showLyrics by rememberSaveable { mutableStateOf(false) }
     var lyricsFull by rememberSaveable { mutableStateOf(false) }
@@ -142,7 +146,10 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
     // Bar colours taken from the song's cover.
     val coverBmp = fr.offlinetune.ui.rememberCover(coverKey, 128)
     val palette = remember(coverBmp) { coverPalette(coverBmp) }
-    val spectrum = rememberLiveSpectrum(viz != VizMode.OFF && state.isPlaying && !lyricsFull, spStyle.bands)
+    // Phone just unlocked: the spectrum fills the whole screen at once (touch to get the player back).
+    var unlockFull by remember { mutableStateOf(false) }
+    LaunchedEffect(fullSpectrum) { if (fullSpectrum) { unlockFull = true; lyricsFull = false; onFullSpectrumShown() } }
+    val spectrum = rememberLiveSpectrum((viz != VizMode.OFF || unlockFull) && state.isPlaying && !lyricsFull, spStyle.bands)
 
     // After ~3 s without touching the screen the spectrum comes forward: over the whole cover
     // (Transparence des contrôles) or alone on the whole screen (Plein écran).
@@ -249,7 +256,7 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                 // Round option buttons: visualisation menu, repeat, shuffle, quality.
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box {
-                        RoundButton(Icons.Rounded.GraphicEq, "Visualisation", 40.dp, active = viz != VizMode.OFF) { visualMenu = true }
+                        OptionToggle(Icons.Rounded.GraphicEq, "Visualisation", active = viz != VizMode.OFF) { visualMenu = true }
                         androidx.compose.material3.DropdownMenu(expanded = visualMenu, onDismissRequest = { visualMenu = false }, containerColor = Ink.Surface) {
                             VizMode.entries.forEach { v ->
                                 androidx.compose.material3.DropdownMenuItem(
@@ -260,14 +267,15 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
                             }
                         }
                     }
-                    Spacer(Modifier.width(10.dp))
-                    RoundButton(
+                    Spacer(Modifier.width(14.dp))
+                    OptionToggle(
                         if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
                         when (state.repeatMode) { Player.REPEAT_MODE_ONE -> "Répéter le morceau"; Player.REPEAT_MODE_ALL -> "Répéter tout"; else -> "Pas de répétition" },
-                        40.dp, active = state.repeatMode != Player.REPEAT_MODE_OFF,
+                        active = state.repeatMode != Player.REPEAT_MODE_OFF,
+                        caption = when (state.repeatMode) { Player.REPEAT_MODE_ONE -> "Un"; Player.REPEAT_MODE_ALL -> "Tout"; else -> null },
                     ) { app.player.cycleRepeat() }
-                    Spacer(Modifier.width(10.dp))
-                    RoundButton(Icons.Rounded.Shuffle, "Aléatoire", 40.dp, active = state.shuffle) {
+                    Spacer(Modifier.width(14.dp))
+                    OptionToggle(Icons.Rounded.Shuffle, "Aléatoire", active = state.shuffle) {
                         app.player.toggleShuffle()
                         Toast.makeText(context, if (state.shuffle) "Ordre de la liste rétabli" else "File mélangée : voir « File » pour la suite", Toast.LENGTH_SHORT).show()
                     }
@@ -324,11 +332,11 @@ fun PlayerScreen(app: App, state: PlayerUiState, coverKey: String?, lrcUri: Stri
         }
 
         androidx.compose.animation.AnimatedVisibility(
-            immersive && viz == VizMode.FULL, enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(600)),
+            (immersive && viz == VizMode.FULL) || unlockFull, enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(600)),
             exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250)),
         ) {
             // Touching anywhere brings the player back (any touch restarts the 3 s timer above).
-            Box(Modifier.fillMaxSize().background(Color.Black).clickable { immersive = false }) {
+            Box(Modifier.fillMaxSize().background(Color.Black).clickable { immersive = false; unlockFull = false }) {
                 SpectrumCanvas(spectrum, spStyle, Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 120.dp), palette)
             }
         }
@@ -399,7 +407,7 @@ private fun QueueSheet(app: App, state: PlayerUiState, tracks: List<fr.offlinetu
                     style = MaterialTheme.typography.bodyMedium, color = Ink.Muted,
                 )
             }
-            RoundButton(Icons.Rounded.Shuffle, "Aléatoire", 40.dp, active = state.shuffle) { app.player.toggleShuffle() }
+            OptionToggle(Icons.Rounded.Shuffle, "Aléatoire", active = state.shuffle) { app.player.toggleShuffle() }
             Spacer(Modifier.width(8.dp))
             androidx.compose.material3.TextButton(onClick = { app.player.clearQueue() }, enabled = state.queue.size > 1) { Text("Vider") }
         }
@@ -542,6 +550,47 @@ private fun TimeBadge(text: String, bold: Boolean, modifier: Modifier) {
     Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = if (bold) FontWeight.Black else FontWeight.Bold, color = Color.White,
         modifier = modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.85f)).padding(horizontal = 9.dp, vertical = 3.dp))
 }
+
+/**
+ * Option switch (visualisation, repeat, shuffle): a glassy ring when off; when on it lights up in the cover's
+ * colour with a soft glow, and [caption] (« Tout » / « Un ») shows the repeat mode in a small tag.
+ */
+@Composable
+private fun OptionToggle(icon: ImageVector, label: String, active: Boolean, caption: String? = null, onClick: () -> Unit) {
+    val accent = MaterialTheme.colorScheme.primary
+    val bg by androidx.compose.animation.animateColorAsState(if (active) accent else Color.White.copy(alpha = 0.08f), label = "bg")
+    val fg by androidx.compose.animation.animateColorAsState(if (active) Color(0xFF0B0D14) else Color.White.copy(alpha = 0.92f), label = "fg")
+    val glow by androidx.compose.animation.core.animateDpAsState(if (active) 14.dp else 0.dp, label = "glow")
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (active) 1f else 0.92f, label = "scale")
+    Box(contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(46.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .shadow(glow, CircleShape, ambientColor = accent, spotColor = accent)
+                .clip(CircleShape)
+                .background(
+                    if (active) Brush.linearGradient(listOf(lerpTo(bg, Color.White, 0.25f), bg))
+                    else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.14f), bg)),
+                )
+                .border(1.dp, if (active) Color.White.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.18f), CircleShape)
+                .clickable(onClickLabel = label, role = androidx.compose.ui.semantics.Role.Switch, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, label, Modifier.size(22.dp), tint = fg)
+        }
+        if (caption != null) {
+            Text(
+                caption, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = Color(0xFF0B0D14),
+                modifier = Modifier.align(Alignment.BottomCenter).offset(y = 6.dp)
+                    .clip(RoundedCornerShape(50)).background(Color.White).padding(horizontal = 5.dp),
+            )
+        }
+    }
+}
+
+private fun lerpTo(a: Color, b: Color, t: Float) = Color(
+    a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t, a.alpha,
+)
 
 /** Translucent round button (the waveform shows through it). */
 @Composable

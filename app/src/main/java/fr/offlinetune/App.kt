@@ -30,6 +30,10 @@ class App : Application() {
         )
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    val preview by lazy { fr.offlinetune.playback.PreviewPlayer(this) }
+    val lyricsFiller by lazy { fr.offlinetune.library.LyricsFiller(this, library) }
+
     val recognizer by lazy { fr.offlinetune.recognize.Recognizer(this, settings) }
 
     override fun onCreate() {
@@ -37,5 +41,7 @@ class App : Application() {
         settings = SettingsStore(this)
         recognizer.start()
         appScope.launch { settings.flow.collect { latest = it } }
+        // The songs known from the last run are ready before the library screen shows up.
+        library.preloadAsync()
     }
 }

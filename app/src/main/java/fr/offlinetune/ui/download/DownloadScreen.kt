@@ -103,7 +103,23 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
     val forYou by model.forYou.collectAsState()
     LaunchedEffect(tracks.size) { if (tracks.isNotEmpty()) model.loadForYou(tracks) }
 
+    // Listening without downloading ends when leaving the Télécharger page.
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { app.preview.stop() } }
     val current = phase
+    Box(Modifier.fillMaxSize()) {
+        DownloadContent(padding, current, model, app, input, downloads, recognize, identified, pendingClips, forYou, keyboard, context, micPermission)
+        // The sheet has its own « Aperçu » card and its Télécharger button at the bottom.
+        if (current !is DlPhase.Editing) PreviewBar(Modifier.align(Alignment.BottomCenter).padding(bottom = padding.calculateBottomPadding()))
+    }
+}
+
+@Composable
+private fun DownloadContent(
+    padding: PaddingValues, current: DlPhase, model: DownloadModel, app: App, input: String, downloads: List<DownloadItem>,
+    recognize: fr.offlinetune.recognize.RecognizeState, identified: List<fr.offlinetune.recognize.Identified>, pendingClips: Int,
+    forYou: ForYouState, keyboard: androidx.compose.ui.platform.SoftwareKeyboardController?, context: Context,
+    micPermission: androidx.activity.compose.ManagedActivityResultLauncher<String, Boolean>,
+) {
     if (current is DlPhase.Editing) {
         SheetScreen(padding, current.edit, model, onBack = { model.back() })
         return
@@ -117,7 +133,7 @@ fun DownloadScreen(padding: PaddingValues, sharedText: String?, onSharedConsumed
         return
     }
 
-    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 110.dp)) {
         item {
             Text("Télécharger", style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 12.dp))
             // Glass search field.

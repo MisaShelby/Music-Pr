@@ -56,7 +56,7 @@ fun currentCoverKey(app: App): String? {
 }
 
 @Composable
-fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
+fun AppRoot(app: App, sharedText: String?, unlockTick: Int = 0, onSharedConsumed: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var playerOpen by rememberSaveable { mutableStateOf(false) }
     val state by app.player.state.collectAsState()
@@ -67,6 +67,11 @@ fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
     LaunchedEffect(Unit) { app.player.connect() }
     LaunchedEffect(sharedText) {
         if (sharedText != null) { pendingShare = sharedText; tab = 2; playerOpen = false; onSharedConsumed() }
+    }
+    // Phone unlocked while a song plays: open the player with the spectrum on the whole screen.
+    var spectrumRequest by remember { mutableStateOf(false) }
+    LaunchedEffect(unlockTick) {
+        if (unlockTick > 0 && state.mediaId != null && sharedText == null) { playerOpen = true; spectrumRequest = true }
     }
     BackHandler(enabled = playerOpen) { playerOpen = false }
 
@@ -92,7 +97,10 @@ fun AppRoot(app: App, sharedText: String?, onSharedConsumed: () -> Unit) {
             }
         }
         AnimatedVisibility(playerOpen && state.mediaId != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            PlayerScreen(app, state, coverKey, tracks.firstOrNull { it.uri == state.mediaId }?.lrcUri, onClose = { playerOpen = false }, onOpenSound = { tab = 3; playerOpen = false })
+            PlayerScreen(
+                app, state, coverKey, tracks.firstOrNull { it.uri == state.mediaId }?.lrcUri,
+                onClose = { playerOpen = false }, onOpenSound = { tab = 3; playerOpen = false }, fullSpectrum = spectrumRequest, onFullSpectrumShown = { spectrumRequest = false },
+            )
         }
     }
 }
