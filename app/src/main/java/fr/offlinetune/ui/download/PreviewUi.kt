@@ -102,6 +102,8 @@ fun PreviewBar(modifier: Modifier = Modifier) {
     val app = LocalContext.current.applicationContext as App
     val st = previewState()
     if (st.key == null) return
+    var dragging by remember(st.key) { mutableStateOf<Float?>(null) }
+    val shownPos = dragging?.let { (it * st.durationMs).toLong() } ?: st.positionMs
     GlassSurface(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), RoundedCornerShape(20.dp), strong = true) {
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -115,7 +117,7 @@ fun PreviewBar(modifier: Modifier = Modifier) {
                     }
                     Text(st.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     Text(
-                        st.error ?: if (st.loading && !st.playing) "Chargement…" else "${st.artist} · ${time(st.positionMs)} / ${time(st.durationMs)}",
+                        st.error ?: if (st.loading && !st.playing) "Chargement…" else "${st.artist} · ${time(shownPos)} / ${time(st.durationMs)}",
                         style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = if (st.error != null) MaterialTheme.colorScheme.error else Ink.Muted,
                     )
@@ -126,11 +128,25 @@ fun PreviewBar(modifier: Modifier = Modifier) {
                 }
                 IconButton(onClick = { app.preview.stop() }) { Icon(Icons.Rounded.Close, "Arrêter l'écoute") }
             }
-            val progress = if (st.durationMs > 0) (st.positionMs.toFloat() / st.durationMs).coerceIn(0f, 1f) else 0f
-            LinearProgressIndicator(
-                progress = { progress }, modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 10.dp).height(3.dp).clip(RoundedCornerShape(2.dp)),
-                trackColor = Color.White.copy(alpha = 0.12f),
-            )
+            // Drag anywhere in the song to listen from there.
+            if (st.durationMs > 0 && st.error == null) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(time(shownPos), style = MaterialTheme.typography.labelSmall, color = Ink.Muted)
+                    Slider(
+                        value = dragging ?: (st.positionMs.toFloat() / st.durationMs).coerceIn(0f, 1f),
+                        onValueChange = { dragging = it },
+                        onValueChangeFinished = { dragging?.let { app.preview.seekTo((it * st.durationMs).toLong()) }; dragging = null },
+                        colors = SliderDefaults.colors(inactiveTrackColor = Color.White.copy(alpha = 0.15f)),
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp).height(28.dp),
+                    )
+                    Text(time(st.durationMs), style = MaterialTheme.typography.labelSmall, color = Ink.Muted)
+                }
+            } else {
+                LinearProgressIndicator(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 10.dp).height(3.dp).clip(RoundedCornerShape(2.dp)),
+                    trackColor = Color.White.copy(alpha = 0.12f),
+                )
+            }
         }
     }
 }
