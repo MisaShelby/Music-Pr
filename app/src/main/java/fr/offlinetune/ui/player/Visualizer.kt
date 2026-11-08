@@ -158,7 +158,9 @@ fun drumBarsFor(durationMs: Long): Int = (durationMs / 700).toInt().coerceIn(90,
 fun rememberSmoothProgress(positionMs: Long, durationMs: Long, playing: Boolean, speed: Float): Float {
     var p by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(positionMs, durationMs, playing, speed) {
-        val dur = durationMs.coerceAtLeast(1).toFloat()
+        // Just after a song starts the length is not known yet: stay at the start instead of jumping to the end.
+        if (durationMs <= 0) { p = 0f; return@LaunchedEffect }
+        val dur = durationMs.toFloat()
         p = (positionMs / dur).coerceIn(0f, 1f)
         if (!playing) return@LaunchedEffect
         val t0 = withFrameNanos { it }
@@ -185,6 +187,10 @@ fun WaveDrum(
     val drag by rememberUpdatedState(onDrag)
     val release by rememberUpdatedState(onRelease)
     val quarter = (PI / 2).toFloat()
+    // While the song's waveform is being computed (first second or two), soft placeholder bars are shown;
+    // the real ones then grow out of them instead of popping in.
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(bars) { if (bars != null) appear.animateTo(1f, tween(500, easing = FastOutSlowInEasing)) else appear.snapTo(0f) }
 
     Canvas(
         modifier
@@ -226,6 +232,7 @@ fun WaveDrum(
             },
     ) {
         val n = bars?.size ?: 200
+        val shown = appear.value
         val c = progress * n
         val r = size.width / 2f
         val mid = size.height / 2
@@ -242,10 +249,11 @@ fun WaveDrum(
             val depth = cos(angle) // 1 in front, 0 at the edge of the globe
             val x = r + r * sin(angle)
             val w = (baseW * depth).coerceAtLeast(1.5f)
-            val v = bars?.let { ((it[i] - lo) / span).coerceIn(0f, 1f) } ?: 0f
+            val real = bars?.let { ((it[i] - lo) / span).coerceIn(0f, 1f) } ?: 0f
+            val v = placeholderBar(i) + (real - placeholderBar(i)) * shown
             val h = ((0.42f + 0.58f * v) * size.height * (0.78f + 0.22f * depth)).coerceAtLeast(w)
             val top = mid - h / 2
-            val alpha = 0.18f + 0.82f * depth
+            val alpha = (0.18f + 0.82f * depth) * (0.35f + 0.65f * shown)
             if (i + 0.5f <= c && playedColors != null) drawRoundRect(
                 playedColors.at(x / size.width).copy(alpha = alpha), Offset(x - w / 2, top), Size(w, h), CornerRadius(w / 2, w / 2),
             ) else if (i + 0.5f <= c) drawRoundRect(
@@ -255,6 +263,9 @@ fun WaveDrum(
         }
     }
 }
+
+/** Gentle wave used while the real waveform is loading (same for every song, 0..1). */
+private fun placeholderBar(i: Int): Float = 0.35f + 0.25f * sin(i * 0.55f) * cos(i * 0.17f)
 
 /** Groups [bars] into [n] bars (loudest of each group). */
 fun regroup(bars: FloatArray, n: Int): FloatArray = FloatArray(n) { i ->

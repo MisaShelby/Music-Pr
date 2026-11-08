@@ -72,14 +72,19 @@ fun SourcesScreen(padding: PaddingValues, song: SongResult, sources: SongSources
         Text("Téléchargeable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 6.dp))
         sources.downloadable.forEach { o ->
             SourceRow(
-                badge = { PlatformBadge(o.provider, 34.dp) },
-                title = if (o.isMatch) "Correspondance YouTube" else o.label,
+                badge = { PlatformBadge(o.shownAs?.provider ?: o.provider, 34.dp) },
+                title = o.shownAs?.provider?.label ?: o.label,
                 subtitle = "${o.format.label()} · paroles ${if (o.hasLyrics) "✓" else "✗"}",
-                action = "Choisir", strongAction = true, link = o.url,
+                action = "Choisir", strongAction = true, link = o.shownAs?.url ?: o.url,
+                listen = { ListenSourceButton(o.url, o.title, o.artist, song.coverUrl, 36.dp) },
             ) { onChoose(o) }
         }
         sources.message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
 
+        if (sources.downloadable.isNotEmpty()) Text(
+            "▶ écoute la source sans la télécharger, pour vérifier que c'est le bon morceau.",
+            style = MaterialTheme.typography.labelMedium, color = Ink.Muted, modifier = Modifier.padding(vertical = 4.dp),
+        )
         if (sources.listenOnly.isNotEmpty()) {
             Text(
                 "Disponible aussi (écoute dans leur appli)", style = MaterialTheme.typography.titleMedium,
@@ -101,7 +106,10 @@ fun SourcesScreen(padding: PaddingValues, song: SongResult, sources: SongSources
 }
 
 @Composable
-private fun SourceRow(badge: @Composable () -> Unit, title: String, subtitle: String, action: String, strongAction: Boolean, link: String? = null, onClick: () -> Unit) {
+private fun SourceRow(
+    badge: @Composable () -> Unit, title: String, subtitle: String, action: String, strongAction: Boolean, link: String? = null,
+    listen: (@Composable () -> Unit)? = null, onClick: () -> Unit,
+) {
     GlassSurface(Modifier.fillMaxWidth().padding(vertical = 5.dp), RoundedCornerShape(18.dp)) {
         Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             badge()
@@ -110,6 +118,7 @@ private fun SourceRow(badge: @Composable () -> Unit, title: String, subtitle: St
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
             }
+            listen?.invoke()
             CopyLinkButton(link)
             Box(
                 Modifier.clip(RoundedCornerShape(50)).background(if (strongAction) Color.White else Color.Transparent)

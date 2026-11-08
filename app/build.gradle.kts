@@ -60,6 +60,7 @@ dependencies {
     implementation(libs.lifecycle.service)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
+    implementation(libs.media3.hls)
     implementation(libs.datastore.preferences)
     implementation(libs.palette)
     implementation(libs.documentfile)

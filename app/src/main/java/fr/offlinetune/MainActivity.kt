@@ -1,15 +1,21 @@
 package fr.offlinetune
 
 import android.Manifest
+import android.app.KeyguardManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
@@ -27,6 +33,22 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private var sharedText by mutableStateOf<String?>(null)
 
+    /** Goes up each time the phone is unlocked while the app was on screen: the player shows the spectrum full screen. */
+    private var unlockTick by mutableIntStateOf(0)
+    /** The app was on screen when the phone went to sleep. */
+    private var stoppedByScreenOff = false
+    private val unlockReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_USER_PRESENT) onUnlocked()
+        }
+    }
+
+    private fun onUnlocked() {
+        if (!stoppedByScreenOff) return
+        stoppedByScreenOff = false
+        if ((application as App).player.state.value.isPlaying) unlockTick++
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(0), navigationBarStyle = SystemBarStyle.dark(0))
@@ -38,6 +60,9 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         val app = application as App
+        // Show the saved library from the start (the folder is searched again only on « Actualiser »).
+        app.library.startupAsync()
+        ContextCompat.registerReceiver(this, unlockReceiver, IntentFilter(Intent.ACTION_USER_PRESENT), ContextCompat.RECEIVER_NOT_EXPORTED)
         setContent {
             val coverKey = currentCoverKey(app)
             val accent by produceState(Ink.Brass, coverKey) {
@@ -51,9 +76,32 @@ class MainActivity : ComponentActivity() {
                 } ?: Ink.Brass
             }
             OfflineTuneTheme(accent) {
-                AppRoot(app, sharedText) { sharedText = null }
+                AppRoot(app, sharedText, unlockTick) { sharedText = null }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Phone without a lock screen: no « unlocked » broadcast, the screen just comes back on.
+        val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        if (stoppedByScreenOff && !km.isKeyguardLocked) onUnlocked()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // The music folder could not be read earlier (storage not ready yet): try again now.
+        (application as App).library.retryIfFailed()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        stoppedByScreenOff = !(getSystemService(POWER_SERVICE) as PowerManager).isInteractive
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(unlockReceiver) }
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

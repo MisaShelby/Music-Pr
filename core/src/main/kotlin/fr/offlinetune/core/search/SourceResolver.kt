@@ -21,7 +21,15 @@ data class DownloadOption(
     val isMatch: Boolean,
     val hasLyrics: Boolean,
     val label: String = provider.label,
+    /**
+     * For a match: the platform the song was found on (Apple Music, Deezer…), shown instead of the place the audio
+     * really comes from. Display only.
+     */
+    val shownAs: ProviderHit? = null,
 )
+
+/** Audio address to listen to before (or instead of) downloading. [sourceUrl] is the page it comes from. */
+data class ListenStream(val url: String, val isHls: Boolean, val sourceUrl: String)
 
 data class SongSources(val downloadable: List<DownloadOption>, val listenOnly: List<ProviderHit>, val message: String?)
 
@@ -50,15 +58,40 @@ class SourceResolver(private val newPipe: NewPipeSource, private val lyrics: Lyr
                 .firstOrNull { it.rejectedReason == null }
             val format = match?.let { runCatching { newPipe.bestStream(it.url).format }.getOrNull() }
             if (match != null && format != null) {
-                options = listOf(DownloadOption(Provider.YOUTUBE_MUSIC, match.url, match.title, match.artist, match.durationSec, format, isMatch = true, hasLyrics = false))
+                val base = DownloadOption(Provider.YOUTUBE_MUSIC, match.url, match.title, match.artist, match.durationSec, format, isMatch = true, hasLyrics = false)
+                // One line per platform the song was found on, each shown under that platform's name.
+                val shown = CATALOG_PRIORITY.mapNotNull { song.hits[it] }.filter { !it.provider.downloadable }
+                options = if (shown.isEmpty()) listOf(base) else shown.map { base.copy(shownAs = it) }
             }
         }
         val l = hasLyrics.await()
         SongSources(
             downloadable = options.map { it.copy(hasLyrics = l) },
-            listenOnly = song.hits.values.filter { !it.provider.downloadable },
+            listenOnly = song.hits.values.filter { h -> !h.provider.downloadable && options.none { it.shownAs?.provider == h.provider } },
             message = if (options.isEmpty()) NO_DOWNLOAD else null,
         )
+    }
+
+    /** Playable address of one source (YouTube / SoundCloud page, or a « Sources perso » direct link). */
+    suspend fun streamOf(sourceUrl: String): ListenStream {
+        fr.offlinetune.core.search.custom.CustomAudio.decode(sourceUrl)?.let { (_, link) -> return ListenStream(link, isHls = link.contains(".m3u8"), sourceUrl) }
+        val s = newPipe.bestStream(sourceUrl)
+        return ListenStream(s.url, s.isHls, sourceUrl)
+    }
+
+    /**
+     * Something to listen to for a search result, without downloading it: its own YouTube / SoundCloud / perso
+     * source when it has one, otherwise the same YouTube match a download would use.
+     */
+    suspend fun listen(song: SongResult): ListenStream {
+        val direct = song.hits.values.filter { it.provider.downloadable }
+            .sortedBy { listOf(Provider.CUSTOM, Provider.YOUTUBE_MUSIC, Provider.SOUNDCLOUD).indexOf(it.provider) }
+        for (h in direct) runCatching { return streamOf(h.url) }
+        val ref = TrackInfo(song.title, song.artist, durationSec = song.durationSec)
+        val match = Matcher.rank(ref, newPipe.searchMusicSongs("${Matcher.firstArtistOf(song.artist)} ${Matcher.cleanTitle(song.title)}"))
+            .firstOrNull { it.rejectedReason == null }
+            ?: throw fr.offlinetune.core.model.NotFound("une version à écouter")
+        return streamOf(match.url)
     }
 
     companion object {

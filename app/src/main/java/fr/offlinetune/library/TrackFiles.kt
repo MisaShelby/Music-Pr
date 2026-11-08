@@ -111,6 +111,15 @@ class TrackFiles(private val context: Context, private val library: LibraryRepos
         } ?: false
     }.getOrDefault(false)
 
+    /** Writes a new « same name ».lrc next to a track that has none; returns its address. */
+    suspend fun writeLrc(t: LibTrack, text: String): String = withContext(Dispatchers.IO) {
+        t.lrcUri?.let { writeBytes(Uri.parse(it), text.toByteArray(Charsets.UTF_8)); return@withContext it }
+        val name = t.pathSegments.lastOrNull() ?: throw IllegalStateException("Nom de fichier inconnu")
+        val target = createIn(parentDocUri(t) ?: rootDoc(), name.substringBeforeLast('.') + ".lrc")
+        writeBytes(target, text.toByteArray(Charsets.UTF_8))
+        target.toString()
+    }
+
     /**
      * Saves edited info into the file (no re-encoding), the .lrc next to it, and the cover.
      * The original is backed up first and restored if writing it back fails. A track without any cover that

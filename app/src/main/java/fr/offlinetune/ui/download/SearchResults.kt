@@ -90,6 +90,7 @@ fun SongRow(song: SongResult, filter: Provider?, onClick: () -> Unit) {
                 Provider.entries.filter { it in song.hits }.forEach { PlatformBadge(it, 18.dp) }
             }
         }
+        ListenSongButton(song)
         CopyLinkButton(bestLink(song, filter))
     }
 }

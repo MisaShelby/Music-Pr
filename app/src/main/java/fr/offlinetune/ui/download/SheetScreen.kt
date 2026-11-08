@@ -69,7 +69,7 @@ fun SheetScreen(padding: PaddingValues, edit: SheetEdit, model: DownloadModel, o
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Retour") }
             Text("Fiche du morceau", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            Text("Depuis ${sheet.origin.label}", style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+            Text("Depuis ${edit.shownAs ?: sheet.origin.label}", style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
         }
         if (edit.busy != null) LinearProgressIndicator(Modifier.fillMaxWidth())
 
@@ -123,8 +123,14 @@ fun SheetScreen(padding: PaddingValues, edit: SheetEdit, model: DownloadModel, o
                 if (src == null) {
                     Text("Aucune source choisie : rien ne sera téléchargé.", color = MaterialTheme.colorScheme.error)
                 } else {
-                    Text("${src.title} — ${src.artist}", style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(src.url, style = MaterialTheme.typography.labelMedium, color = Ink.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (edit.shownAs != null) {
+                        Text("${info.title} — ${info.artist}", style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(edit.shownAs, style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+                    } else {
+                        Text("${src.title} — ${src.artist}", style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(src.url, style = MaterialTheme.typography.labelMedium, color = Ink.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    SourcePreviewCard(src.url, info.title, info.artist, info.coverUrl)
                 }
                 sheet.format?.let { Text("Qualité obtenue : ${it.label()}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
                 TextButton(onClick = { choosingSource = true }, contentPadding = PaddingValues(0.dp)) { Text("Changer de source") }
