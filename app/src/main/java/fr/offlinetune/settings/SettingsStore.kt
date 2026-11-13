@@ -30,6 +30,8 @@ data class AppSettings(
     /** « Sources perso »: manifests added from repository links (or bundled examples). */
     val customSources: List<CustomSourceEntry> = emptyList(),
     val pauseFade: Boolean = true,
+    /** Resume this app's last song when a Bluetooth speaker / headset / car connects. */
+    val resumeOnBluetooth: Boolean = false,
     /** « Écran de verrouillage »: the app's own lock screen (live spectrum) over the phone's one while music plays. */
     val lockScreenPlayer: Boolean = false,
     /** « Apparence » of the whole app and of the lock screen. */

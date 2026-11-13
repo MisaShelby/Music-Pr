@@ -110,6 +110,18 @@ class PlaybackService : MediaSessionService() {
                 .build()
         }
 
+        /** Play pressed (headset, car, system card) while nothing is loaded: the saved session comes back. */
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession, controller: MediaSession.ControllerInfo,
+        ): com.google.common.util.concurrent.ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val saved = SessionStore.load(this@PlaybackService)
+                ?: return com.google.common.util.concurrent.Futures.immediateFailedFuture(UnsupportedOperationException())
+            val items = with(SessionStore) { saved.items.map { it.toMediaItem() } }
+            return com.google.common.util.concurrent.Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(items, saved.index.coerceIn(0, items.lastIndex), saved.positionMs),
+            )
+        }
+
         override fun onCustomCommand(
             session: MediaSession, controller: MediaSession.ControllerInfo,
             customCommand: androidx.media3.session.SessionCommand, args: android.os.Bundle,

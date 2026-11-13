@@ -126,6 +126,18 @@ fun SettingsScreen(padding: PaddingValues) {
             s.autoMix,
         ) { v -> update { it.copy(autoMix = v) } }
         Toggle("Fondu à la pause et à la reprise", "Le son baisse doucement au lieu de s'arrêter net.", s.pauseFade) { v -> update { it.copy(pauseFade = v) } }
+        val btPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> update { it.copy(resumeOnBluetooth = ok) } }
+        Toggle(
+            "Lecture à la connexion Bluetooth",
+            "Quand une enceinte, un casque ou la voiture se connecte, la dernière chanson de cette appli reprend " +
+                "(sauf si une autre musique joue déjà). Les boutons Bluetooth commandent alors cette appli.",
+            s.resumeOnBluetooth,
+        ) { v ->
+            if (v && android.os.Build.VERSION.SDK_INT >= 31 &&
+                androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) btPermission.launch(android.Manifest.permission.BLUETOOTH_CONNECT)
+            else update { it.copy(resumeOnBluetooth = v) }
+        }
 
         Group("Paroles")
         LyricsFillRow(app)

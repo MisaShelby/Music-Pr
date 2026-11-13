@@ -28,6 +28,7 @@ import fr.offlinetune.ui.currentCoverKey
 import fr.offlinetune.ui.theme.Ink
 import fr.offlinetune.ui.theme.OfflineTuneTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
@@ -116,5 +117,28 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (intent?.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT)?.let { sharedText = it }
+        if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { uri -> intent.data = null; playExternal(uri) }
+    }
+
+    /**
+     * An audio file opened from another app (Mes fichiers, a message…): played here. When it is a song of the
+     * library (same file name), the library's entry is used, with its cover and lyrics.
+     */
+    private fun playExternal(uri: android.net.Uri) {
+        val app = application as App
+        kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
+            val name = withContext(Dispatchers.IO) {
+                runCatching {
+                    contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                        if (c.moveToFirst()) c.getString(0) else null
+                    }
+                }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')
+            }
+            app.library.loadCache()
+            val known = name?.let { n -> app.library.tracks.value.firstOrNull { it.pathSegments.lastOrNull() == n } }
+            val track = known?.let { fr.offlinetune.playback.PlayableTrack(it.uri, it.title, it.artist, it.album, it.coverUri) }
+                ?: fr.offlinetune.playback.PlayableTrack(uri.toString(), name?.substringBeforeLast('.') ?: "Fichier audio", "", null, null)
+            app.player.playList(listOf(track), 0)
+        }
     }
 }

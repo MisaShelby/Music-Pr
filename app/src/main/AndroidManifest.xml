@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- « Lecture à la connexion Bluetooth »: being told when a speaker / headset / car connects. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- Lets the app put its lock screen (live spectrum) up when the phone goes to sleep. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
@@ -31,6 +33,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="fr.offlinetune" android:host="spotify-callback" />
+            </intent-filter>
+            <!-- Music player: audio files opened from Mes fichiers, a message… can be played here (« Toujours »). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -57,6 +73,17 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+        <!-- Play button of a headset / car / Bluetooth speaker while the app is closed: restarts the playback service. -->
+        <receiver android:name="androidx.media3.session.MediaButtonReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".playback.BluetoothReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
         <service
             android:name=".download.DownloadService"
             android:exported="false"
