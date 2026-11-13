@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.settings
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -113,7 +114,7 @@ fun CustomSourcesScreen(padding: PaddingValues, onBack: () -> Unit) {
         OutlinedTextField(
             value = link, onValueChange = { link = it; message = null }, singleLine = true,
             placeholder = { Text("https://github.com/compte/depot") },
-            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
+            shape = rounded(14.dp), modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -139,7 +140,7 @@ fun CustomSourcesScreen(padding: PaddingValues, onBack: () -> Unit) {
         if (s.customSources.isEmpty()) Text("Aucune source pour l'instant.", color = Ink.Muted)
         s.customSources.forEach { e ->
             val m = runCatching { SourceManifest.parse(e.manifest, fallbackName = fr.offlinetune.core.search.custom.GithubLinks.repoName(e.link)) }.getOrNull()
-            GlassSurface(Modifier.fillMaxWidth().padding(vertical = 6.dp), RoundedCornerShape(18.dp)) {
+            GlassSurface(Modifier.fillMaxWidth().padding(vertical = 6.dp), rounded(18.dp)) {
                 Column(Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Extension, null, tint = MaterialTheme.colorScheme.primary)
@@ -193,7 +194,7 @@ fun CustomSourcesScreen(padding: PaddingValues, onBack: () -> Unit) {
                     "Seule l'adresse de recherche est obligatoire : titre, artiste, pochette, durée et lien audio sont trouvés automatiquement dans les réponses si vous ne les indiquez pas. « playable » (facultatif) écarte les morceaux non disponibles.",
                 style = MaterialTheme.typography.bodyMedium, color = Ink.Muted,
             )
-            GlassSurface(Modifier.fillMaxWidth().padding(vertical = 8.dp), RoundedCornerShape(14.dp)) {
+            GlassSurface(Modifier.fillMaxWidth().padding(vertical = 8.dp), rounded(14.dp)) {
                 Text(TEMPLATE, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
             }
             OutlinedButton(onClick = {

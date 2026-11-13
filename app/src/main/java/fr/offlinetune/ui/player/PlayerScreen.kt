@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.player
 
+import fr.offlinetune.ui.theme.rounded
 import android.content.Context
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.lazy.items
@@ -119,7 +120,7 @@ fun qualityLabel(context: Context, uri: String): String? {
 @Composable
 fun PlayerScreen(
     app: App, state: PlayerUiState, coverKey: String?, lrcUri: String?, onClose: () -> Unit, onOpenSound: () -> Unit,
-    fullSpectrum: Boolean = false, onFullSpectrumShown: () -> Unit = {},
+    onWriteLyrics: () -> Unit = {}, fullSpectrum: Boolean = false, onFullSpectrumShown: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var showLyrics by rememberSaveable { mutableStateOf(false) }
@@ -178,7 +179,7 @@ fun PlayerScreen(
             if (lyricsFull) {
                 // Paroles en plein écran: nothing but the lyrics.
                 Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                    LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) }, modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 48.dp))
+                    LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) }, onWrite = onWriteLyrics, modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 48.dp))
                     Row(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
                         RoundButton(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.isPlaying) "Pause" else "Lecture", 40.dp) { app.player.togglePlay() }
                         Spacer(Modifier.width(8.dp))
@@ -215,9 +216,9 @@ fun PlayerScreen(
                 Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp, bottom = 16.dp), contentAlignment = Alignment.Center) {
                     if (showLyrics) {
                         // Lyrics take the cover's and the title's place.
-                        LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) })
+                        LyricsView(lrc, state.positionMs, onSeek = { app.player.seekTo(it) }, onWrite = onWriteLyrics)
                     } else {
-                        val shape = RoundedCornerShape(22.dp)
+                        val shape = rounded(22.dp)
                         // Transparence des contrôles: the spectrum lives behind the cover (peeking around it);
                         // when the screen is left alone it comes in front and fills the whole cover.
                         val front by androidx.compose.animation.core.animateFloatAsState(
@@ -320,7 +321,7 @@ fun PlayerScreen(
                 SpeedRow(state.speed) { app.player.setSpeed(it) }
                 Spacer(Modifier.height(8.dp))
 
-                GlassSurface(Modifier.fillMaxWidth().padding(bottom = 12.dp), RoundedCornerShape(24.dp), strong = true) {
+                GlassSurface(Modifier.fillMaxWidth().padding(bottom = 12.dp), rounded(24.dp), strong = true) {
                     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                         BarButton(Icons.Rounded.Lyrics, "Paroles", active = showLyrics) { showLyrics = !showLyrics }
                         BarButton(Icons.AutoMirrored.Rounded.QueueMusic, "File") { showQueue = true }
@@ -416,7 +417,7 @@ private fun QueueSheet(app: App, state: PlayerUiState, tracks: List<fr.offlinetu
             state.queue.getOrNull(state.index)?.let { q ->
                 item(key = "now") {
                     Text("En cours", style = MaterialTheme.typography.labelLarge, color = Ink.Muted, modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 6.dp))
-                    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp), RoundedCornerShape(18.dp), strong = true) {
+                    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp), rounded(18.dp), strong = true) {
                         QueueRow(q, byUri, now = true, playing = state.isPlaying, onClick = { app.player.togglePlay() }, onRemove = null)
                     }
                 }
@@ -440,14 +441,14 @@ private fun QueueRow(
 ) {
     val t = byUri[q.mediaId]
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().clip(rounded(14.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(number?.toString() ?: "", style = MaterialTheme.typography.labelMedium, color = Ink.Muted,
             modifier = Modifier.width(26.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Box {
-            CoverImage(fr.offlinetune.ui.Covers.key(t?.coverUri ?: q.artworkUri, q.mediaId), RoundedCornerShape(10.dp), Modifier.size(50.dp), size = 128)
-            if (now) Box(Modifier.size(50.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+            CoverImage(fr.offlinetune.ui.Covers.key(t?.coverUri ?: q.artworkUri, q.mediaId), rounded(10.dp), Modifier.size(50.dp), size = 128)
+            if (now) Box(Modifier.size(50.dp).clip(rounded(10.dp)).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
                 Icon(if (playing) Icons.Rounded.GraphicEq else Icons.Rounded.Pause, null, tint = MaterialTheme.colorScheme.primary)
             }
         }

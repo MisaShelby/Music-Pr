@@ -22,13 +22,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.offlinetune.core.lyrics.LrcFormat
+import androidx.compose.material.icons.rounded.EditNote
 import fr.offlinetune.ui.theme.Ink
 
 /** Synced lyrics scroll and highlight the current line (tap a line to seek); plain lyrics are shown as text. */
 @Composable
-fun LyricsView(lrc: String?, positionMs: Long, onSeek: (Long) -> Unit, modifier: Modifier = Modifier) {
+fun LyricsView(lrc: String?, positionMs: Long, onSeek: (Long) -> Unit, onWrite: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     if (lrc.isNullOrBlank()) {
-        Text("Pas de paroles pour ce morceau.", color = Ink.Muted, modifier = modifier.padding(24.dp))
+        androidx.compose.foundation.layout.Column(modifier.padding(24.dp)) {
+            Text("Pas de paroles pour ce morceau.", color = Ink.Muted)
+            if (onWrite != null) androidx.compose.material3.Button(onClick = onWrite, modifier = Modifier.padding(top = 12.dp)) {
+                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Rounded.EditNote, null)
+                androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 6.dp))
+                Text("Écrire et synchroniser les paroles")
+            }
+        }
         return
     }
     val lines = remember(lrc) { LrcFormat.parse(lrc) }

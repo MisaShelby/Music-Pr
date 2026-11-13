@@ -37,7 +37,12 @@ class CrossfadeController(private val context: Context) {
         data object Idle : Xf
         data class Preparing(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, var seeked: Boolean = false) : Xf
         /** Aux plays silently until its sound really comes out, in step with main; only then the hand-over happens. */
-        data class Syncing(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, var since: Long, var tries: Int = 0) : Xf
+        data class Syncing(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, var since: Long, var tries: Int = 0, var steady: Int = 0) : Xf
+        /**
+         * Both players sound the same outgoing song, in step: main fades out while aux fades in over a few tenths of
+         * a second, so any tiny remaining offset is smoothed instead of heard as a skip or a repeated bit.
+         */
+        data class HandOver(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, val start: Long) : Xf
         data class Fading(val aux: ExoPlayer, val start: Long, val durationMs: Long) : Xf
     }
     private var xf: Xf = Xf.Idle
@@ -48,9 +53,17 @@ class CrossfadeController(private val context: Context) {
     private var auxOutGain = 1f
     private var fadeAnim: Runnable? = null
 
+    private var handGain = 0f
+
     private fun applyVolume() {
+        val s = xf
+        if (s is Xf.HandOver) {
+            main.volume = fadeGain * (1f - handGain)
+            s.aux.volume = fadeGain * handGain
+            return
+        }
         main.volume = fadeGain * xfadeGain
-        (xf as? Xf.Fading)?.aux?.volume = fadeGain * auxOutGain
+        (s as? Xf.Fading)?.aux?.volume = fadeGain * auxOutGain
     }
 
     val sessionPlayer: Player = object : ForwardingPlayer(main) {
@@ -99,8 +112,8 @@ class CrossfadeController(private val context: Context) {
                     if (dj.inSpeed != 1.0 && t > 0.75f) {
                         val k = ((t - 0.75f) / 0.25f).coerceIn(0f, 1f)
                         val target = (userSpeed * (dj.inSpeed + (1 - dj.inSpeed) * k)).toFloat()
-                        // Few, larger steps: every tempo change restarts the time-stretcher (audible hiccup).
-                        if (kotlin.math.abs(target - main.playbackParameters.speed) >= 0.012f || k >= 1f && target != main.playbackParameters.speed) {
+                        // Small steps: the audio output changes its tempo smoothly (no restart of the processing).
+                        if (kotlin.math.abs(target - main.playbackParameters.speed) >= 0.004f || k >= 1f && target != main.playbackParameters.speed) {
                             main.playbackParameters = androidx.media3.common.PlaybackParameters(target, 1f)
                         }
                     }
@@ -115,13 +128,25 @@ class CrossfadeController(private val context: Context) {
                 if (!main.isPlaying) { cancelCrossfade(); return }
                 val now = SystemClock.elapsedRealtime()
                 val waited = now - s.since
-                if (waited > 4000) { cancelCrossfade(); return }
-                if (!s.aux.isPlaying || waited < 250) return
+                if (waited > 5000) { cancelCrossfade(); return }
+                // The audio clock of a just-started player needs ~half a second to be exact.
+                if (!s.aux.isPlaying || waited < 500) return
                 val drift = main.currentPosition - s.aux.currentPosition
-                if (kotlin.math.abs(drift) > 40 && s.tries < 3) {
+                if (kotlin.math.abs(drift) > 25 && s.tries < 4) {
                     s.aux.seekTo(s.aux.currentPosition + drift + 20)
-                    s.since = now; s.tries++
-                } else go(s)
+                    s.since = now; s.tries++; s.steady = 0
+                } else if (++s.steady >= 3 || s.tries >= 4) {
+                    // In step on three readings in a row: hand the outgoing song over smoothly.
+                    handGain = 0f
+                    xf = Xf.HandOver(s.aux, s.next, s.manual, now)
+                    applyVolume()
+                }
+            }
+            is Xf.HandOver -> {
+                if (!main.isPlaying) { cancelCrossfade(); return }
+                handGain = ((SystemClock.elapsedRealtime() - s.start) / HAND_OVER_MS.toFloat()).coerceIn(0f, 1f)
+                applyVolume()
+                if (handGain >= 1f) go(s.aux, s.next, s.manual)
             }
             Xf.Idle -> {
                 val st = settings
@@ -210,7 +235,8 @@ class CrossfadeController(private val context: Context) {
         return plan
     }
 
-    private fun go(p: Xf.Syncing) {
+    private fun go(aux: ExoPlayer, next: Boolean, manual: Boolean) {
+        val p = object { val aux = aux; val next = next; val manual = manual }
         val auto = if (!p.manual && settings.autoMix) plan else null
         val fadeMs = when {
             p.manual -> settings.crossfadeSec * 1000L
@@ -239,6 +265,7 @@ class CrossfadeController(private val context: Context) {
         when (val s = xf) {
             is Xf.Preparing -> s.aux.release()
             is Xf.Syncing -> s.aux.release()
+            is Xf.HandOver -> s.aux.release()
             is Xf.Fading -> s.aux.release()
             Xf.Idle -> {}
         }
@@ -295,12 +322,17 @@ class CrossfadeController(private val context: Context) {
 
     companion object {
         private const val PAUSE_FADE_MS = 250L
+        private const val HAND_OVER_MS = 300L
         private const val BASS_CUT = -24f
 
         fun buildPlayer(context: Context, handleFocus: Boolean, tap: Boolean = false, bassCut: () -> Float = { 0f }): ExoPlayer {
             val renderers = object : DefaultRenderersFactory(context) {
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
-                    DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(DspAudioProcessor(bassCut, tap))).build()
+                    DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(DspAudioProcessor(bassCut, tap)))
+                        // Tempo changes (Mix automatique) done by the audio output itself: smooth, no restart of
+                        // the sound processing, so no hiccup while the tempo eases back.
+                        .setEnableAudioTrackPlaybackParams(true)
+                        .build()
             }
             return ExoPlayer.Builder(context, renderers)
                 .setAudioAttributes(

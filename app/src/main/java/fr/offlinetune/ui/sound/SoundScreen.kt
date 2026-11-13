@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.sound
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -99,12 +100,12 @@ fun SoundScreen(padding: PaddingValues) {
 
     Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
         // Segmented top bar: Égaliseur · Tonalité · Effets
-        GlassSurface(Modifier.fillMaxWidth().padding(top = 12.dp), RoundedCornerShape(28.dp), strong = true) {
+        GlassSurface(Modifier.fillMaxWidth().padding(top = 12.dp), rounded(28.dp), strong = true) {
             Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 listOf(Icons.Rounded.Equalizer to "Égaliseur", Icons.Rounded.Tune to "Tonalité", Icons.Rounded.GraphicEq to "Effets")
                     .forEachIndexed { i, (icon, label) ->
                         Row(
-                            Modifier.clip(RoundedCornerShape(22.dp)).background(if (page == i) Glass.FillStrong else Color.Transparent)
+                            Modifier.clip(rounded(22.dp)).background(if (page == i) Glass.FillStrong else Color.Transparent)
                                 .clickable { page = i }.padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -120,7 +121,7 @@ fun SoundScreen(padding: PaddingValues) {
             0 -> {
                 // Faders
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                    GlassSurface(Modifier.width(70.dp), RoundedCornerShape(26.dp)) {
+                    GlassSurface(Modifier.width(70.dp), rounded(26.dp)) {
                         Column(Modifier.padding(vertical = 12.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                             Fader(dsp.preampDb, enabled = dsp.enabled, color = Ink.Text) { v -> updateDsp { it.copy(preampDb = v) } }
                             Text("Préampli", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -279,7 +280,7 @@ private fun Fader(value: Float, enabled: Boolean, color: Color, height: Dp = 300
 /** Response preview: smooth curve through the band gains (plus shelves), centre line = 0 dB. */
 @Composable
 private fun CurvePreview(dsp: DspSettings, accent: Color) {
-    GlassSurface(Modifier.fillMaxWidth().height(86.dp), RoundedCornerShape(24.dp)) {
+    GlassSurface(Modifier.fillMaxWidth().height(86.dp), rounded(24.dp)) {
         Canvas(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
             val mid = size.height / 2
             drawLine(Ink.Muted.copy(alpha = 0.4f), Offset(0f, mid), Offset(size.width, mid), 1.dp.toPx())

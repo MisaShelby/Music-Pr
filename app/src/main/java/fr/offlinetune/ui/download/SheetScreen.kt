@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.download
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -77,13 +78,13 @@ fun SheetScreen(padding: PaddingValues, edit: SheetEdit, model: DownloadModel, o
             Spacer(Modifier.height(8.dp))
             Box(Modifier.align(Alignment.CenterHorizontally)) {
                 BytesImage(
-                    sheet.coverBytes, RoundedCornerShape(18.dp),
+                    sheet.coverBytes, rounded(18.dp),
                     Modifier.size(220.dp).clickable {
                         pickCover.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
                 )
                 Box(
-                    Modifier.align(Alignment.BottomEnd).padding(8.dp).clip(RoundedCornerShape(10.dp)).background(Ink.Background.copy(alpha = 0.75f)).padding(6.dp),
+                    Modifier.align(Alignment.BottomEnd).padding(8.dp).clip(rounded(10.dp)).background(Ink.Background.copy(alpha = 0.75f)).padding(6.dp),
                 ) { Icon(Icons.Rounded.Edit, "Changer la pochette", Modifier.size(18.dp)) }
             }
             Text(
@@ -94,7 +95,7 @@ fun SheetScreen(padding: PaddingValues, edit: SheetEdit, model: DownloadModel, o
 
             if (sheet.warnings.isNotEmpty()) {
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.error.copy(alpha = 0.14f)).padding(14.dp),
+                    Modifier.fillMaxWidth().clip(rounded(12.dp)).background(MaterialTheme.colorScheme.error.copy(alpha = 0.14f)).padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     sheet.warnings.forEach { w ->
@@ -188,7 +189,7 @@ private fun Field(label: String, value: String, modifier: Modifier = Modifier.fi
     OutlinedTextField(
         value = value, onValueChange = onChange, label = { Text(label) }, singleLine = true,
         keyboardOptions = if (number) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
-        shape = RoundedCornerShape(12.dp), modifier = modifier.padding(vertical = 4.dp),
+        shape = rounded(12.dp), modifier = modifier.padding(vertical = 4.dp),
     )
 }
 

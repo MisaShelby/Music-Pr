@@ -7,6 +7,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
@@ -14,15 +15,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
+/** The chosen « Apparence », read everywhere colours and shapes are drawn (changes redraw the app at once). */
+object LookState {
+    var look by androidx.compose.runtime.mutableStateOf(fr.offlinetune.settings.Look())
+    var lock by androidx.compose.runtime.mutableStateOf(fr.offlinetune.settings.LockLook())
+    val palette get() = fr.offlinetune.settings.Palettes.of(look.palette)
+}
+
+/** Colours of the current palette (« Apparence › Fond »). */
 object Ink {
-    val Background = Color(0xFF12141C)
-    val Surface = Color(0xFF1C1F2B)
-    val SurfaceHigh = Color(0xFF272B3A)
-    val Text = Color(0xFFECEAE4)
-    val Muted = Color(0xFF9A9DAB)
+    val Background get() = Color(LookState.palette.background)
+    val Surface get() = Color(LookState.palette.surface)
+    val SurfaceHigh get() = Color(LookState.palette.surfaceHigh)
+    val Text get() = Color(LookState.palette.text)
+    val Muted get() = Color(LookState.palette.muted)
     val Brass = Color(0xFFE8B04B)
     val Error = Color(0xFFFF8A80)
 }
+
+/** Rounded corners scaled by « Apparence › Coins ». */
+fun rounded(radius: androidx.compose.ui.unit.Dp) =
+    androidx.compose.foundation.shape.RoundedCornerShape(radius * LookState.look.roundness)
 
 private val type = Typography(
     displaySmall = TextStyle(fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.02).em),
@@ -33,10 +46,11 @@ private val type = Typography(
     labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
 )
 
-/** Dark theme; [accent] comes from the current cover (brass by default). */
+/** Dark theme; [accent] comes from the current cover (brass by default) unless a fixed colour is chosen. */
 @Composable
 fun OfflineTuneTheme(accent: Color = Ink.Brass, content: @Composable () -> Unit) {
-    val a by animateColorAsState(accent, tween(600), label = "accent")
+    val look = LookState.look
+    val a by animateColorAsState(if (look.accentFromCover) accent else Color(look.accent), tween(600), label = "accent")
     val onAccent = if (a.luminance() > 0.45f) Ink.Background else Ink.Text
     MaterialTheme(
         colorScheme = darkColorScheme(
@@ -53,6 +67,12 @@ fun OfflineTuneTheme(accent: Color = Ink.Brass, content: @Composable () -> Unit)
             error = Ink.Error,
         ),
         typography = type,
-        content = content,
-    )
+    ) {
+        // « Taille du texte ».
+        val d = androidx.compose.ui.platform.LocalDensity.current
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale * look.textScale),
+            content = content,
+        )
+    }
 }

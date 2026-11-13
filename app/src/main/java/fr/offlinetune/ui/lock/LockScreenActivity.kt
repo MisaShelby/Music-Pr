@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.lock
 
+import fr.offlinetune.ui.theme.rounded
 import android.app.KeyguardManager
 import android.content.Intent
 import android.os.Build
@@ -93,7 +94,7 @@ class LockScreenActivity : ComponentActivity() {
             val bmp = rememberCover(coverKey, 256)
             val palette = remember(bmp) { coverPalette(bmp) }
             OfflineTuneTheme(palette.first()) {
-                LockScreen(app, coverKey, palette, onUnlock = { finish() }, onOpenApp = ::openApp)
+                LockScreen(app, coverKey, palette, fr.offlinetune.ui.theme.LookState.lock, onUnlock = { finish() }, onOpenApp = ::openApp)
             }
         }
     }
@@ -121,76 +122,131 @@ class LockScreenActivity : ComponentActivity() {
     override fun onStop() { super.onStop(); visible = false }
 }
 
+/** Battery level (%) and charging, refreshed every minute. */
 @Composable
-private fun LockScreen(app: App, coverKey: String?, palette: List<Color>, onUnlock: () -> Unit, onOpenApp: () -> Unit) {
+private fun rememberBattery(): Pair<Int, Boolean> {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var v by remember { mutableStateOf(0 to false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val i = context.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (i != null) {
+                val level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, 0) * 100 / i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+                val st = i.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, 0)
+                v = level to (st == android.os.BatteryManager.BATTERY_STATUS_CHARGING || st == android.os.BatteryManager.BATTERY_STATUS_FULL)
+            }
+            delay(60_000)
+        }
+    }
+    return v
+}
+
+/**
+ * The lock screen, drawn as chosen in Réglages › Écran de verrouillage ([look]). [preview]: the small live copy
+ * shown in that settings page (no gestures).
+ */
+@Composable
+internal fun LockScreen(
+    app: App, coverKey: String?, palette: List<Color>, look: fr.offlinetune.settings.LockLook,
+    preview: Boolean = false, onUnlock: () -> Unit = {}, onOpenApp: () -> Unit = {},
+) {
     val state by app.player.state.collectAsState()
     val settings by app.settings.flow.collectAsState(initial = app.latest)
     // Music closed meanwhile: nothing to show.
-    LaunchedEffect(state.connected, state.mediaId) { if (state.connected && state.mediaId == null) onUnlock() }
+    if (!preview) LaunchedEffect(state.connected, state.mediaId) { if (state.connected && state.mediaId == null) onUnlock() }
 
     val randomStyle = remember(state.mediaId) { SpectrumStyle.entries.random() }
     val style = SpectrumStyle.from(settings.spectrumStyle) ?: randomStyle
-    val spectrum = rememberLiveSpectrum(state.isPlaying, style.bands)
+    val spectrumOn = look.spectrum || look.layout == "SPECTRUM"
+    val spectrum = rememberLiveSpectrum(state.isPlaying && spectrumOn, style.bands)
 
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) { while (true) { now = Date(); delay(1000) } }
 
-    // Slide up to leave: the screen follows the finger, past a third of a screen it goes away.
+    // Slide up to leave: the screen follows the finger, past a quarter of a screen it goes away.
     var pull by remember { mutableFloatStateOf(0f) }
     var leaving by remember { mutableStateOf(false) }
     val offset by animateFloatAsState(if (leaving) -3000f else pull, tween(if (leaving) 250 else 0), label = "pull",
         finishedListener = { if (leaving) onUnlock() })
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black)
-            .pointerInput(Unit) {
+        Modifier.fillMaxSize().background(Color.Black).then(
+            if (preview) Modifier else Modifier.pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragEnd = { if (-pull > size.height / 4f) leaving = true else pull = 0f },
                     onDragCancel = { pull = 0f },
                 ) { change, dy -> change.consume(); pull = (pull + dy).coerceAtMost(0f) }
             },
+        ),
     ) {
         Box(Modifier.fillMaxSize().graphicsLayer { translationY = offset; alpha = 1f + (offset / 1500f).coerceIn(-1f, 0f) }) {
             AppBackdrop(coverKey, MaterialTheme.colorScheme.primary) {
-                // The live spectrum fills the lower part of the screen, behind the controls.
-                SpectrumCanvas(
-                    spectrum, style,
-                    Modifier.fillMaxWidth().height(360.dp).align(Alignment.BottomCenter).padding(horizontal = 6.dp, vertical = 90.dp),
-                    palette,
-                )
+                if (spectrumOn) {
+                    val full = look.layout == "SPECTRUM"
+                    SpectrumCanvas(
+                        spectrum, style,
+                        if (full) Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 120.dp)
+                        else Modifier.fillMaxWidth().height(360.dp).align(Alignment.BottomCenter).padding(horizontal = 6.dp, vertical = 90.dp),
+                        palette,
+                    )
+                }
                 Column(
                     Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Spacer(Modifier.height(36.dp))
-                    Text(SimpleDateFormat("HH:mm", Locale.FRANCE).format(now), fontSize = 76.sp, fontWeight = FontWeight.Light, color = Color.White)
-                    Text(
+                    LockClock(look, now)
+                    if (look.showDate) Text(
                         SimpleDateFormat("EEEE d MMMM", Locale.FRANCE).format(now).replaceFirstChar { it.uppercase() },
                         style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.8f),
                     )
-                    Spacer(Modifier.height(32.dp))
-                    CoverImage(coverKey, RoundedCornerShape(24.dp), Modifier.size(210.dp).shadow(18.dp, RoundedCornerShape(24.dp)), size = 512)
-                    Spacer(Modifier.height(20.dp))
-                    Text(state.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                    Text(
-                        listOf(state.artist, state.album).filter { it.isNotBlank() }.joinToString(" — "),
-                        style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.75f),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                        LockButton(Icons.Rounded.SkipPrevious, "Précédent", 56) { app.player.previous() }
-                        LockButton(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.isPlaying) "Pause" else "Lecture", 80, filled = true) {
-                            app.player.togglePlay()
+                    LockWidget(look.widget, state)
+                    Spacer(Modifier.height(if (look.layout == "LARGE") 28.dp else 20.dp))
+                    when (look.layout) {
+                        "COMPACT" -> {
+                            Spacer(Modifier.weight(1f))
+                            Box(Modifier.fillMaxWidth().clip(rounded(26.dp)).background(Color.White.copy(alpha = 0.12f)).padding(16.dp)) {
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CoverImage(coverKey, rounded(14.dp), Modifier.size(72.dp), size = 256)
+                                        Spacer(Modifier.width(14.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(state.title, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(state.artist, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                    Controls(app, state.isPlaying, Modifier.align(Alignment.CenterHorizontally), small = true)
+                                }
+                            }
                         }
-                        LockButton(Icons.Rounded.SkipNext, "Suivant", 56) { app.player.next() }
+                        "MINIMAL", "SPECTRUM" -> {
+                            Spacer(Modifier.weight(1f))
+                            Text(state.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                            Text(state.artist, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(16.dp))
+                            Controls(app, state.isPlaying)
+                        }
+                        else -> {
+                            CoverImage(coverKey, rounded(24.dp), Modifier.size(210.dp).shadow(18.dp, rounded(24.dp)), size = 512)
+                            Spacer(Modifier.height(20.dp))
+                            Text(state.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                            Text(
+                                listOf(state.artist, state.album).filter { it.isNotBlank() }.joinToString(" — "),
+                                style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.75f),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            Controls(app, state.isPlaying)
+                        }
                     }
-                    Spacer(Modifier.weight(1f))
+                    if (look.layout == "LARGE") Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(24.dp))
                     Text(
                         "Ouvrir l'appli", style = MaterialTheme.typography.labelLarge, color = Color.White,
-                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.14f))
-                            .clickable(onClick = onOpenApp).padding(horizontal = 18.dp, vertical = 8.dp),
+                        modifier = Modifier.clip(rounded(50.dp)).background(Color.White.copy(alpha = 0.14f))
+                            .clickable(enabled = !preview, onClick = onOpenApp).padding(horizontal = 18.dp, vertical = 8.dp),
                     )
                     Spacer(Modifier.height(14.dp))
                     Icon(Icons.Rounded.KeyboardArrowUp, null, tint = Color.White.copy(alpha = 0.8f))
@@ -199,6 +255,60 @@ private fun LockScreen(app: App, coverKey: String?, palette: List<Color>, onUnlo
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LockClock(look: fr.offlinetune.settings.LockLook, now: Date) {
+    val hh = SimpleDateFormat("HH", Locale.FRANCE).format(now)
+    val mm = SimpleDateFormat("mm", Locale.FRANCE).format(now)
+    when (look.clock) {
+        "HIDDEN" -> {}
+        "BOLD" -> Text("$hh:$mm", fontSize = 84.sp, fontWeight = FontWeight.Black, color = Color.White)
+        "DIGITAL" -> Text(
+            "$hh:$mm", fontSize = 72.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+        )
+        "STACKED" -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(hh, fontSize = 96.sp, lineHeight = 92.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(mm, fontSize = 96.sp, lineHeight = 92.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        }
+        else -> Text("$hh:$mm", fontSize = 76.sp, fontWeight = FontWeight.Light, color = Color.White)
+    }
+}
+
+@Composable
+private fun LockWidget(kind: String, state: fr.offlinetune.playback.PlayerUiState) {
+    if (kind == "NONE") return
+    Spacer(Modifier.height(10.dp))
+    if (kind == "PROGRESS") {
+        val p = if (state.durationMs > 0) (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
+        Box(Modifier.fillMaxWidth(0.7f).height(4.dp).clip(rounded(2.dp)).background(Color.White.copy(alpha = 0.2f))) {
+            Box(Modifier.fillMaxWidth(p).height(4.dp).background(MaterialTheme.colorScheme.primary))
+        }
+        return
+    }
+    val text = if (kind == "BATTERY") {
+        val (lvl, charging) = rememberBattery()
+        (if (charging) "En charge · " else "Batterie · ") + "$lvl %"
+    } else {
+        state.queue.getOrNull(state.index + 1)?.let { "Ensuite : ${it.title} — ${it.artist}" } ?: "Dernière chanson de la file"
+    }
+    Text(
+        text, style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.clip(rounded(50.dp)).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 14.dp, vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun Controls(app: App, playing: Boolean, modifier: Modifier = Modifier, small: Boolean = false) {
+    val k = if (small) 0.8f else 1f
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+        LockButton(Icons.Rounded.SkipPrevious, "Précédent", (56 * k).toInt()) { app.player.previous() }
+        LockButton(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Lecture", (80 * k).toInt(), filled = true) {
+            app.player.togglePlay()
+        }
+        LockButton(Icons.Rounded.SkipNext, "Suivant", (56 * k).toInt()) { app.player.next() }
     }
 }
 

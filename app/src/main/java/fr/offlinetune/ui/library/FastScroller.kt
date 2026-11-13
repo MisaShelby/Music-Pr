@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.library
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -90,7 +91,7 @@ fun FastScroller(
         Box(
             Modifier.align(Alignment.TopEnd).offset { IntOffset(0, thumbY) }.padding(end = 6.dp)
                 .graphicsLayer { this.alpha = alpha }
-                .size(width = 8.dp, height = 52.dp).clip(RoundedCornerShape(4.dp))
+                .size(width = 8.dp, height = 52.dp).clip(rounded(4.dp))
                 .background(if (dragFraction != null) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.75f)),
         )
         // Letter bubble while dragging.

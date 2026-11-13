@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.player
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -40,10 +41,10 @@ fun MiniPlayer(state: PlayerUiState, coverKey: String?, onOpen: () -> Unit, onTo
     val waveform = rememberWaveform(context, state.mediaId, state.durationMs, drumBarsFor(state.durationMs))
     var dragging by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
     val progress = dragging ?: rememberSmoothProgress(state.positionMs, state.durationMs, state.isPlaying, state.speed)
-    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 6.dp), RoundedCornerShape(22.dp), strong = true) {
+    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 6.dp), rounded(22.dp), strong = true) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            CoverImage(coverKey, RoundedCornerShape(10.dp), Modifier.size(44.dp), size = 128)
+            CoverImage(coverKey, rounded(10.dp), Modifier.size(44.dp), size = 128)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(state.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)

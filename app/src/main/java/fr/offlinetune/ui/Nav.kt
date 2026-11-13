@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.MaterialTheme
@@ -38,9 +39,10 @@ import fr.offlinetune.ui.settings.SettingsScreen
 import fr.offlinetune.ui.sound.SoundScreen
 
 private val DESTS = listOf(
-    NavItem("Bibliothèque", Icons.Rounded.LibraryMusic),
-    NavItem("Rechercher", Icons.Rounded.Search),
+    NavItem("Biblio", Icons.Rounded.LibraryMusic),
+    NavItem("Recherche", Icons.Rounded.Search),
     NavItem("Télécharger", Icons.Rounded.Download),
+    NavItem("Paroles", Icons.Rounded.Lyrics),
     NavItem("Son", Icons.Rounded.Equalizer),
     NavItem("Réglages", Icons.Rounded.Settings),
 )
@@ -92,14 +94,16 @@ fun AppRoot(app: App, sharedText: String?, unlockTick: Int = 0, onSharedConsumed
                 0 -> LibraryScreen(padding)
                 1 -> LibraryScreen(padding, searchMode = true)
                 2 -> DownloadScreen(padding, pendingShare) { pendingShare = null }
-                3 -> SoundScreen(padding)
+                3 -> fr.offlinetune.ui.lyrics.LyricsScreen(padding)
+                4 -> SoundScreen(padding)
                 else -> SettingsScreen(padding)
             }
         }
         AnimatedVisibility(playerOpen && state.mediaId != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
             PlayerScreen(
                 app, state, coverKey, tracks.firstOrNull { it.uri == state.mediaId }?.lrcUri,
-                onClose = { playerOpen = false }, onOpenSound = { tab = 3; playerOpen = false }, fullSpectrum = spectrumRequest, onFullSpectrumShown = { spectrumRequest = false },
+                onClose = { playerOpen = false }, onOpenSound = { tab = 4; playerOpen = false },
+                onWriteLyrics = { state.mediaId?.let { app.lyricsTarget.value = it }; tab = 3; playerOpen = false }, fullSpectrum = spectrumRequest, onFullSpectrumShown = { spectrumRequest = false },
             )
         }
     }

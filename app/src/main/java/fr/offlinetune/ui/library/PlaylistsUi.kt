@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.library
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,7 +88,7 @@ fun PlaylistsTab(app: App, onOpen: (Playlist) -> Unit) {
                 Modifier.fillMaxWidth().clickable { onOpen(p) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CoverImage(first?.let { Covers.key(it.coverUri, it.uri) }, RoundedCornerShape(12.dp), Modifier.size(56.dp), size = 160)
+                CoverImage(first?.let { Covers.key(it.coverUri, it.uri) }, rounded(12.dp), Modifier.size(56.dp), size = 160)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -145,7 +146,7 @@ fun PlaylistDetail(app: App, uri: String, onGone: () -> Unit, onRenamed: (fr.off
                     }.padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CoverImage(t?.let { Covers.key(it.coverUri, it.uri) }, RoundedCornerShape(8.dp), Modifier.size(44.dp), size = 128)
+                    CoverImage(t?.let { Covers.key(it.coverUri, it.uri) }, rounded(8.dp), Modifier.size(44.dp), size = 128)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(

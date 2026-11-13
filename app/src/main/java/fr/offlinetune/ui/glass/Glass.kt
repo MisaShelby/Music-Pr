@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.glass
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -41,9 +42,11 @@ import fr.offlinetune.ui.rememberCover
 import fr.offlinetune.ui.theme.Ink
 
 object Glass {
-    val Fill = Color.White.copy(alpha = 0.12f)
-    val FillStrong = Color.White.copy(alpha = 0.18f)
-    val Stroke = Color.White.copy(alpha = 0.20f)
+    /** « Apparence › Effet verre ». */
+    private val k get() = when (fr.offlinetune.ui.theme.LookState.look.glass) { "SUBTLE" -> 0.55f; "STRONG" -> 1.6f; else -> 1f }
+    val Fill get() = Color.White.copy(alpha = 0.12f * k)
+    val FillStrong get() = Color.White.copy(alpha = 0.18f * k)
+    val Stroke get() = Color.White.copy(alpha = (0.20f * k).coerceAtMost(0.4f))
     val CoralGradient = listOf(Color(0xFFFF6A88), Color(0xFFFF2D55), Color(0xFFC2185B))
 }
 
@@ -55,8 +58,14 @@ object Glass {
 fun AppBackdrop(coverKey: String?, accent: Color, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val bmp = rememberCover(coverKey, 256)
     val a by animateColorAsState(accent, label = "backdrop")
+    val style = fr.offlinetune.ui.theme.LookState.look.backdrop
     Box(modifier.fillMaxSize().background(Ink.Background)) {
-        if (bmp != null) {
+        if (style == "PLAIN") {
+            // « Uni »: the palette only.
+        } else if (style == "GRADIENT") {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(a.copy(alpha = 0.45f), a.copy(alpha = 0.10f), Color.Transparent))))
+            Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(a.copy(alpha = 0.30f), Color.Transparent), radius = 1600f)))
+        } else if (bmp != null) {
             Image(
                 bmp.asImageBitmap(), null, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().blur(80.dp),
@@ -74,7 +83,7 @@ fun AppBackdrop(coverKey: String?, accent: Color, modifier: Modifier = Modifier,
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(22.dp),
+    shape: Shape = rounded(22.dp),
     strong: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -113,20 +122,23 @@ data class NavItem(val label: String, val icon: ImageVector)
 fun GlassNavBar(items: List<NavItem>, selected: Int, onSelect: (Int) -> Unit) {
     GlassSurface(
         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(28.dp), strong = true,
+        shape = rounded(28.dp), strong = true,
     ) {
         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             items.forEachIndexed { i, item ->
                 val on = i == selected
                 Column(
-                    Modifier.clip(RoundedCornerShape(20.dp)).clickable { onSelect(i) }.padding(horizontal = 10.dp, vertical = 4.dp),
+                    Modifier.weight(1f).clip(rounded(20.dp)).clickable { onSelect(i) }.padding(horizontal = 2.dp, vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(
                         Modifier.clip(CircleShape).background(if (on) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color.Transparent)
-                            .padding(horizontal = 14.dp, vertical = 4.dp),
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
                     ) { Icon(item.icon, null, tint = if (on) MaterialTheme.colorScheme.primary else Ink.Text) }
-                    Text(item.label, style = MaterialTheme.typography.labelMedium, color = if (on) Ink.Text else Ink.Muted)
+                    Text(
+                        item.label, style = MaterialTheme.typography.labelMedium, fontSize = 10.5.sp, maxLines = 1, softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip, color = if (on) Ink.Text else Ink.Muted,
+                    )
                 }
             }
         }

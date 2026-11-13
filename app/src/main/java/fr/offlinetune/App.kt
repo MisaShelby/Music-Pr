@@ -34,13 +34,22 @@ class App : Application() {
     val preview by lazy { fr.offlinetune.playback.PreviewPlayer(this) }
     val lyricsFiller by lazy { fr.offlinetune.library.LyricsFiller(this, library) }
 
+    /** Song to open in « Paroles » (set from the player when a song has no lyrics). */
+    val lyricsTarget = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
     val recognizer by lazy { fr.offlinetune.recognize.Recognizer(this, settings) }
 
     override fun onCreate() {
         super.onCreate()
         settings = SettingsStore(this)
         recognizer.start()
-        appScope.launch { settings.flow.collect { latest = it } }
+        appScope.launch {
+            settings.flow.collect {
+                latest = it
+                fr.offlinetune.ui.theme.LookState.look = it.look
+                fr.offlinetune.ui.theme.LookState.lock = it.lockLook
+            }
+        }
         // The songs known from the last run are ready before the library screen shows up.
         library.preloadAsync()
     }

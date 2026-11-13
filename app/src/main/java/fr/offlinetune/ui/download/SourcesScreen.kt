@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.download
 
+import fr.offlinetune.ui.theme.rounded
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -53,7 +54,7 @@ fun SourcesScreen(padding: PaddingValues, song: SongResult, sources: SongSources
             Text("Sources", style = MaterialTheme.typography.headlineSmall)
         }
         Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            RemoteImage(song.coverUrl, RoundedCornerShape(14.dp), Modifier.size(72.dp))
+            RemoteImage(song.coverUrl, rounded(14.dp), Modifier.size(72.dp))
             Spacer(Modifier.width(14.dp))
             Column {
                 Text(song.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -110,7 +111,7 @@ private fun SourceRow(
     badge: @Composable () -> Unit, title: String, subtitle: String, action: String, strongAction: Boolean, link: String? = null,
     listen: (@Composable () -> Unit)? = null, onClick: () -> Unit,
 ) {
-    GlassSurface(Modifier.fillMaxWidth().padding(vertical = 5.dp), RoundedCornerShape(18.dp)) {
+    GlassSurface(Modifier.fillMaxWidth().padding(vertical = 5.dp), rounded(18.dp)) {
         Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             badge()
             Spacer(Modifier.width(12.dp))

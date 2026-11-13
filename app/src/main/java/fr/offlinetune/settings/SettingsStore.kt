@@ -32,6 +32,9 @@ data class AppSettings(
     val pauseFade: Boolean = true,
     /** « Écran de verrouillage »: the app's own lock screen (live spectrum) over the phone's one while music plays. */
     val lockScreenPlayer: Boolean = false,
+    /** « Apparence » of the whole app and of the lock screen. */
+    val look: Look = Look(),
+    val lockLook: LockLook = LockLook(),
     val autoLyrics: Boolean = true,
     val dsp: DspSettings = DspSettings(),
     val userPresets: Map<String, List<Float>> = emptyMap(),

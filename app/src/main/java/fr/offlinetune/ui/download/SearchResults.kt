@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.download
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -79,7 +80,7 @@ fun SongRow(song: SongResult, filter: Provider?, onClick: () -> Unit) {
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RemoteImage(song.coverUrl, RoundedCornerShape(10.dp), Modifier.size(54.dp))
+        RemoteImage(song.coverUrl, rounded(10.dp), Modifier.size(54.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(song.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)

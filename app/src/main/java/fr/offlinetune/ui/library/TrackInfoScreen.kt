@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.library
 
+import fr.offlinetune.ui.theme.rounded
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
@@ -105,8 +106,8 @@ fun TrackInfoScreen(app: App, t: LibTrack, onClose: () -> Unit) {
         if (busy != null) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(busy!!, color = Ink.Muted) }
         Spacer(Modifier.height(8.dp))
         Column(Modifier.align(Alignment.CenterHorizontally).clickable { pickCover.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-            if (newCover != null) BytesImage(newCover, RoundedCornerShape(18.dp), Modifier.size(200.dp))
-            else CoverImage(Covers.key(t.coverUri, t.uri), RoundedCornerShape(18.dp), Modifier.size(200.dp), size = 600)
+            if (newCover != null) BytesImage(newCover, rounded(18.dp), Modifier.size(200.dp))
+            else CoverImage(Covers.key(t.coverUri, t.uri), rounded(18.dp), Modifier.size(200.dp), size = 600)
         }
         Text(
             if (t.hasArtwork == false && newCover == null) "Pas de pochette — touchez pour en choisir une" else "Touchez la pochette pour la remplacer",
@@ -116,7 +117,7 @@ fun TrackInfoScreen(app: App, t: LibTrack, onClose: () -> Unit) {
         Text("${app.library.stats.count(t.uri)} lecture(s)", style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
 
         @Composable fun field(label: String, v: String, number: Boolean = false, set: (String) -> Unit) = OutlinedTextField(
-            v, set, label = { Text(label) }, singleLine = true, shape = RoundedCornerShape(12.dp),
+            v, set, label = { Text(label) }, singleLine = true, shape = rounded(12.dp),
             keyboardOptions = if (number) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
         )

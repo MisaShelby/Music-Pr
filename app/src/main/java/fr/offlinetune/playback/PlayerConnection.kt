@@ -179,6 +179,9 @@ class PlayerConnection(private val context: Context) {
     }
 
     fun setSpeed(speed: Float) = withController { it.setPlaybackSpeed(speed) }
+    /** Exact position now (the UI state is refreshed only 4 times a second) — for stamping lyrics lines. */
+    fun livePositionMs(): Long = controller?.currentPosition ?: state.value.positionMs
+
     fun togglePlay() = withController { if (it.isPlaying) it.pause() else { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } }
     fun next() = withController { it.seekToNext() }
     fun previous() = withController { it.seekToPrevious() }

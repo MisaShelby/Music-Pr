@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.library
 
+import fr.offlinetune.ui.theme.rounded
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -296,7 +297,7 @@ fun LibraryScreen(contentPadding: PaddingValues, searchMode: Boolean = false) {
                     placeholder = { Text("Rechercher un titre, un artiste, un album") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
                     trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Effacer") } },
-                    shape = RoundedCornerShape(14.dp),
+                    shape = rounded(14.dp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 ScrollableTabRow(selectedTabIndex = tab, containerColor = Color.Transparent, edgePadding = 12.dp) {
@@ -424,7 +425,7 @@ private fun SelectionBar(
     count: Int, onPlay: () -> Unit, onShuffle: () -> Unit, onNext: () -> Unit, onEnd: () -> Unit,
     onPlaylist: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit, onClose: () -> Unit,
 ) {
-    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), RoundedCornerShape(22.dp), strong = true) {
+    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), rounded(22.dp), strong = true) {
         Column(Modifier.padding(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, "Annuler la sélection") }
@@ -520,7 +521,7 @@ fun TrackRow(
     Row(
         Modifier.fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(rounded(16.dp))
             .background(
                 when {
                     selected -> accent.copy(alpha = 0.18f)
@@ -532,9 +533,9 @@ fun TrackRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            CoverImage(Covers.key(t.coverUri, t.uri), RoundedCornerShape(12.dp), Modifier.size(60.dp), size = 160)
+            CoverImage(Covers.key(t.coverUri, t.uri), rounded(12.dp), Modifier.size(60.dp), size = 160)
             if (playing) Box(
-                Modifier.size(60.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.45f)),
+                Modifier.size(60.dp).clip(rounded(12.dp)).background(Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Rounded.GraphicEq, null, tint = accent, modifier = Modifier.size(26.dp)) }
             if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = accent, modifier = Modifier.align(Alignment.BottomEnd).size(20.dp))
@@ -572,7 +573,7 @@ private fun TrackActionsSheet(t: LibTrack, playing: Boolean, actions: TrackActio
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Ink.Surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CoverImage(Covers.key(t.coverUri, t.uri), RoundedCornerShape(16.dp), Modifier.size(84.dp), size = 256)
+                CoverImage(Covers.key(t.coverUri, t.uri), rounded(16.dp), Modifier.size(84.dp), size = 256)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(t.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -604,9 +605,9 @@ private fun TrackActionsSheet(t: LibTrack, playing: Boolean, actions: TrackActio
 private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
     val accent = MaterialTheme.colorScheme.primary
     Column(
-        modifier.clip(RoundedCornerShape(18.dp))
+        modifier.clip(rounded(18.dp))
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.04f))))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), rounded(18.dp))
             .clickable(onClick = onClick).padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -622,7 +623,7 @@ private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier, onC
 private fun SheetItem(icon: ImageVector, label: String, sub: String, danger: Boolean = false, onClick: () -> Unit) {
     val tint = if (danger) MaterialTheme.colorScheme.error else Ink.Text
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().clip(rounded(14.dp)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -642,7 +643,7 @@ private fun SheetItem(icon: ImageVector, label: String, sub: String, danger: Boo
 private fun TrackCard(t: LibTrack, playing: Boolean, selected: Boolean, onClick: () -> Unit, onLong: () -> Unit) {
     Column(Modifier.combinedClickable(onClick = onClick, onLongClick = onLong)) {
         Box {
-            CoverImage(Covers.key(t.coverUri, t.uri), RoundedCornerShape(16.dp), Modifier.fillMaxWidth().aspectRatio(1f), size = 400)
+            CoverImage(Covers.key(t.coverUri, t.uri), rounded(16.dp), Modifier.fillMaxWidth().aspectRatio(1f), size = 400)
             if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(26.dp))
         }
         Spacer(Modifier.height(6.dp))
@@ -663,7 +664,7 @@ private fun GroupList(groups: List<Group>, grid: Boolean, onOpen: (Group) -> Uni
         ) {
             itemsIndexed(groups, key = { i, g -> "$i:${g.name}:${g.sub}" }) { _, g ->
                 Column(Modifier.clickable { onOpen(g) }) {
-                    CoverImage(Covers.key(g.sample.coverUri, g.sample.uri), RoundedCornerShape(16.dp), Modifier.fillMaxWidth().aspectRatio(1f), size = 400)
+                    CoverImage(Covers.key(g.sample.coverUri, g.sample.uri), rounded(16.dp), Modifier.fillMaxWidth().aspectRatio(1f), size = 400)
                     Spacer(Modifier.height(6.dp))
                     Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     Text(g.sub, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = Ink.Muted)
@@ -678,7 +679,7 @@ private fun GroupList(groups: List<Group>, grid: Boolean, onOpen: (Group) -> Uni
                 Modifier.fillMaxWidth().clickable { onOpen(g) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CoverImage(Covers.key(g.sample.coverUri, g.sample.uri), RoundedCornerShape(10.dp), Modifier.size(56.dp), size = 160)
+                CoverImage(Covers.key(g.sample.coverUri, g.sample.uri), rounded(10.dp), Modifier.size(56.dp), size = 160)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)

@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.download
 
+import fr.offlinetune.ui.theme.rounded
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -104,10 +105,10 @@ fun PreviewBar(modifier: Modifier = Modifier) {
     if (st.key == null) return
     var dragging by remember(st.key) { mutableStateOf<Float?>(null) }
     val shownPos = dragging?.let { (it * st.durationMs).toLong() } ?: st.positionMs
-    GlassSurface(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), RoundedCornerShape(20.dp), strong = true) {
+    GlassSurface(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), rounded(20.dp), strong = true) {
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                RemoteImage(st.coverUrl, RoundedCornerShape(10.dp), Modifier.size(44.dp))
+                RemoteImage(st.coverUrl, rounded(10.dp), Modifier.size(44.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -143,7 +144,7 @@ fun PreviewBar(modifier: Modifier = Modifier) {
                 }
             } else {
                 LinearProgressIndicator(
-                    Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 10.dp).height(3.dp).clip(RoundedCornerShape(2.dp)),
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 10.dp).height(3.dp).clip(rounded(2.dp)),
                     trackColor = Color.White.copy(alpha = 0.12f),
                 )
             }
@@ -162,7 +163,7 @@ fun SourcePreviewCard(url: String, title: String, artist: String, coverUrl: Stri
     val key = sourceKey(url)
     val mine = st.key == key
     var dragging by remember { mutableStateOf<Float?>(null) }
-    GlassSurface(Modifier.fillMaxWidth().padding(vertical = 8.dp), RoundedCornerShape(18.dp)) {
+    GlassSurface(Modifier.fillMaxWidth().padding(vertical = 8.dp), rounded(18.dp)) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ListenButton(key, 52.dp) { app.preview.toggle(key, title, artist, coverUrl, startFraction = 0.3f) { app.downloadModel.sourceStream(url) } }

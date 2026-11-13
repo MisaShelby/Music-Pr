@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.download
 
+import fr.offlinetune.ui.theme.rounded
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -107,7 +108,7 @@ private fun RowTitle(t: String) =
 @Composable
 private fun Card(cover: String?, title: String, subtitle: String, badge: Provider?, onClick: () -> Unit) {
     Column(Modifier.width(138.dp).clickable(onClick = onClick)) {
-        RemoteImage(cover, RoundedCornerShape(16.dp), Modifier.size(138.dp))
+        RemoteImage(cover, rounded(16.dp), Modifier.size(138.dp))
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             badge?.let { PlatformBadge(it, 16.dp); Spacer(Modifier.width(6.dp)) }

@@ -73,9 +73,24 @@ fun SettingsScreen(padding: PaddingValues) {
 
     var showCustom by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     if (showCustom) { CustomSourcesScreen(padding) { showCustom = false }; return }
+    var showLook by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (showLook) { androidx.activity.compose.BackHandler { showLook = false }; AppearanceScreen(padding) { showLook = false }; return }
+    var showLock by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (showLock) { androidx.activity.compose.BackHandler { showLock = false }; LockLookScreen(padding) { showLock = false }; return }
 
     Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Text("Réglages", style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+
+        Group("Affichage")
+        Clickable(
+            "Apparence de l'appli",
+            (fr.offlinetune.settings.LOOK_PRESETS.firstOrNull { it.look.copy(textScale = s.look.textScale) == s.look }?.name ?: "Personnalisée") +
+                " · couleurs, fond, effet verre, coins, taille du texte",
+        ) { showLook = true }
+        Clickable(
+            "Écran de verrouillage",
+            (if (s.lockScreenPlayer) "Activé" else "Désactivé") + " · heure, widget, affichage de la chanson",
+        ) { showLock = true }
 
         Group("Sources")
         Clickable(
@@ -111,24 +126,6 @@ fun SettingsScreen(padding: PaddingValues) {
             s.autoMix,
         ) { v -> update { it.copy(autoMix = v) } }
         Toggle("Fondu à la pause et à la reprise", "Le son baisse doucement au lieu de s'arrêter net.", s.pauseFade) { v -> update { it.copy(pauseFade = v) } }
-        val ctx = LocalContext.current
-        val overlayOk = android.provider.Settings.canDrawOverlays(ctx)
-        Toggle(
-            "Écran de verrouillage avec spectre",
-            "Pendant la lecture, l'écran verrouillé affiche l'heure, la pochette, le spectre animé et les boutons. " +
-                "Glissez vers le haut pour déverrouiller." +
-                if (s.lockScreenPlayer && !overlayOk) " Autorisation « Affichage par-dessus les autres applis » manquante : touchez pour l'accorder." else "",
-            s.lockScreenPlayer,
-        ) { v ->
-            update { it.copy(lockScreenPlayer = v) }
-            // Android only lets the app show its screen when the phone goes to sleep with this permission.
-            if (v && !android.provider.Settings.canDrawOverlays(ctx)) {
-                ctx.startActivity(
-                    android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + ctx.packageName))
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }
-        }
 
         Group("Paroles")
         LyricsFillRow(app)

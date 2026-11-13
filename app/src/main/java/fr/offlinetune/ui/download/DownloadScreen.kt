@@ -1,5 +1,6 @@
 package fr.offlinetune.ui.download
 
+import fr.offlinetune.ui.theme.rounded
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
@@ -137,7 +138,7 @@ private fun DownloadContent(
         item {
             Text("Télécharger", style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 12.dp))
             // Glass search field.
-            fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), RoundedCornerShape(20.dp), strong = true) {
+            fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), rounded(20.dp), strong = true) {
                 androidx.compose.material3.TextField(
                     value = input, onValueChange = { model.input.value = it },
                     placeholder = { Text("Lien ou « artiste titre »", color = Ink.Muted) },
@@ -245,7 +246,7 @@ private fun RecognizeCard(state: fr.offlinetune.recognize.RecognizeState, onClos
     val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "mic")
     val pulse by transition.animateFloat(0.85f, 1.15f, androidx.compose.animation.core.infiniteRepeatable(
         androidx.compose.animation.core.tween(700), androidx.compose.animation.core.RepeatMode.Reverse), label = "pulse")
-    fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), RoundedCornerShape(22.dp), strong = true) {
+    fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), rounded(22.dp), strong = true) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             val listening = state is fr.offlinetune.recognize.RecognizeState.Listening
             androidx.compose.foundation.layout.Box(
@@ -276,7 +277,7 @@ private fun Modifier.graphicsLayerScale(s: Float) = this.then(androidx.compose.u
 
 @Composable
 private fun DownloadRow(item: DownloadItem, onRetry: () -> Unit) {
-    fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), RoundedCornerShape(18.dp)) {
+    fr.offlinetune.ui.glass.GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), rounded(18.dp)) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(item.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -291,7 +292,7 @@ private fun DownloadRow(item: DownloadItem, onRetry: () -> Unit) {
             when (val s = item.state) {
                 DlState.Queued -> Text("En attente", color = Ink.Muted, style = MaterialTheme.typography.bodyMedium)
                 is DlState.Running -> LinearProgressIndicator(
-                    progress = { s.progress }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    progress = { s.progress }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(rounded(3.dp)),
                     trackColor = fr.offlinetune.ui.glass.Glass.Fill,
                 )
                 is DlState.Done -> Column {

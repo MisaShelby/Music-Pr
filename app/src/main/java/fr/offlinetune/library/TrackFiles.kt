@@ -111,6 +111,36 @@ class TrackFiles(private val context: Context, private val library: LibraryRepos
         } ?: false
     }.getOrDefault(false)
 
+    /**
+     * Lyrics typed in « Paroles »: saved as « same name ».lrc in the song's folder. A song lying directly in the
+     * music folder (no folder of its own) first gets one, « Artiste - Titre », and is moved into it when the
+     * storage allows moving; otherwise the .lrc goes next to it. The library is updated afterwards.
+     */
+    suspend fun saveLyricsFile(t: LibTrack, text: String) = withContext(Dispatchers.IO) {
+        val name = t.pathSegments.lastOrNull() ?: throw IllegalStateException("Nom de fichier inconnu")
+        val lrcName = name.substringBeforeLast('.') + ".lrc"
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        t.lrcUri?.let { writeBytes(Uri.parse(it), bytes); library.refresh(); return@withContext }
+        var folder = parentDocUri(t)
+        if (folder == null) {
+            val root = rootDoc()
+            val audio = Uri.parse(t.uri)
+            if (supportsMove(audio)) {
+                val base = TrackSaver.folderName(TrackInfo(t.title, t.artist, t.album))
+                var dirName = base; var k = 2
+                while (findChild(root, dirName) != null) dirName = "$base (${k++})"
+                val dir = DocumentsContract.createDocument(resolver, root, DocumentsContract.Document.MIME_TYPE_DIR, dirName)
+                if (dir != null) {
+                    if (runCatching { DocumentsContract.moveDocument(resolver, audio, root, dir) }.getOrNull() != null) folder = dir
+                    else runCatching { DocumentsContract.deleteDocument(resolver, dir) }
+                }
+            }
+        }
+        val target = (folder ?: rootDoc()).let { f -> findChild(f, lrcName) ?: createIn(f, lrcName) }
+        writeBytes(target, bytes)
+        library.refresh()
+    }
+
     /** Writes a new « same name ».lrc next to a track that has none; returns its address. */
     suspend fun writeLrc(t: LibTrack, text: String): String = withContext(Dispatchers.IO) {
         t.lrcUri?.let { writeBytes(Uri.parse(it), text.toByteArray(Charsets.UTF_8)); return@withContext it }
