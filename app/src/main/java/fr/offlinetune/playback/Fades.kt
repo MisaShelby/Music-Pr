@@ -15,7 +15,7 @@ object Fades {
     }
 
     /** Time given to the outgoing player to load and seek before the fade must begin. */
-    const val PREPARE_LEAD_MS = 2500L
+    const val PREPARE_LEAD_MS = 3500L
 
     fun shouldPrepareCrossfade(durationMs: Long, positionMs: Long, crossfadeMs: Long): Boolean =
         shouldStartCrossfade(durationMs, positionMs, crossfadeMs + PREPARE_LEAD_MS) && durationMs >= 2 * crossfadeMs

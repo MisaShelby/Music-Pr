@@ -178,7 +178,7 @@ class CrossfadeController(private val context: Context) {
     /** Loads the outgoing item on a fresh aux player, paused, at main's position. */
     private fun prepare(next: Boolean, manual: Boolean) {
         val item = main.currentMediaItem ?: return
-        val a = buildPlayer(context, handleFocus = false) { auxBassCut }
+        val a = buildPlayer(context, handleFocus = false, exactSeek = true) { auxBassCut }
         val p = Xf.Preparing(a, next, manual)
         xf = p
         a.setMediaItem(item, main.currentPosition)
@@ -325,7 +325,12 @@ class CrossfadeController(private val context: Context) {
         private const val HAND_OVER_MS = 300L
         private const val BASS_CUT = -24f
 
-        fun buildPlayer(context: Context, handleFocus: Boolean, tap: Boolean = false, bassCut: () -> Float = { 0f }): ExoPlayer {
+        /**
+         * [exactSeek]: MP3 files are normally positioned approximately (the player then *believes* it is at the asked
+         * time while the sound is up to a few seconds off). The crossfade's second player must be at the very same
+         * place as the main one, so it reads the file's frames to land exactly (a little slower to get ready).
+         */
+        fun buildPlayer(context: Context, handleFocus: Boolean, tap: Boolean = false, exactSeek: Boolean = false, bassCut: () -> Float = { 0f }): ExoPlayer {
             val renderers = object : DefaultRenderersFactory(context) {
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
                     DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(DspAudioProcessor(bassCut, tap)))
@@ -334,7 +339,15 @@ class CrossfadeController(private val context: Context) {
                         .setEnableAudioTrackPlaybackParams(true)
                         .build()
             }
-            return ExoPlayer.Builder(context, renderers)
+            val builder = ExoPlayer.Builder(context, renderers)
+            if (exactSeek) builder.setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    context,
+                    androidx.media3.extractor.DefaultExtractorsFactory()
+                        .setMp3ExtractorFlags(androidx.media3.extractor.mp3.Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING),
+                ),
+            )
+            return builder
                 .setAudioAttributes(
                     AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                     handleFocus,
