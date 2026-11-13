@@ -43,13 +43,15 @@ class PlaybackService : MediaSessionService() {
                 ),
             )
             .build()
+        // A crossfade makes another player the current one: the session follows it.
+        engine.onSwap = { p -> session?.player = p; dirty = true }
         restoreSession()
         androidx.core.content.ContextCompat.registerReceiver(
             this, screenReceiver, android.content.IntentFilter(Intent.ACTION_SCREEN_OFF), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         // Keep the session saved: right away when the queue / song / repeat mode changes, and every few seconds
         // while playing (position), so reopening the app finds the same song at the same place.
-        engine.main.addListener(object : androidx.media3.common.Player.Listener {
+        engine.addListener(object : androidx.media3.common.Player.Listener {
             override fun onEvents(player: androidx.media3.common.Player, events: androidx.media3.common.Player.Events) {
                 if (events.containsAny(
                         androidx.media3.common.Player.EVENT_TIMELINE_CHANGED, androidx.media3.common.Player.EVENT_MEDIA_ITEM_TRANSITION,

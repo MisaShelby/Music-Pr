@@ -8,74 +8,102 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import fr.offlinetune.core.playback.DjPlan
 import fr.offlinetune.settings.AppSettings
 
 /**
- * Owns the main ExoPlayer and an auxiliary one used only during crossfades.
- * [sessionPlayer] is what the MediaSession exposes: it adds pause/resume fades and crossfade on manual skip.
+ * Playback with crossfades between two players (« decks »).
  *
- * Crossfade: the aux player loads the outgoing item paused (Preparing); once it is READY and positioned where
- * main is, aux starts, main jumps to the next item muted, and both gains follow an equal-power curve (Fading).
- * Any pause of main — user, call, headphones unplugged, error — stops the aux player at once.
+ * The current deck plays the queue. For a crossfade, a second deck is loaded with the same queue, positioned on the
+ * incoming song, paused. When the fade begins it simply starts playing and becomes the current deck (the
+ * MediaSession is given its player, see [onSwap]); the outgoing deck is never touched — it goes on playing its song,
+ * fading out, and is released when the fade is over. Nothing is handed over between players in the middle of a song,
+ * so there is nothing to align and nothing can be heard twice or skipped.
+ *
+ * Any pause of the current deck — user, call, headphones unplugged, error — stops the other deck at once.
  */
 @UnstableApi
 class CrossfadeController(private val context: Context) {
     @Volatile var settings: AppSettings = AppSettings()
 
-    @Volatile private var mainBassCut = 0f
-    @Volatile private var auxBassCut = 0f
-    val main: ExoPlayer = buildPlayer(context, handleFocus = true, tap = true) { mainBassCut }
+    private inner class Deck(handleFocus: Boolean) {
+        @Volatile var bassCut = 0f
+        /** Feeds the « Spectre » visualizer: only the current deck does. */
+        @Volatile var tap = false
+        val player: ExoPlayer = buildPlayer(context, handleFocus, { tap }) { bassCut }
+
+        /** What the MediaSession exposes for this deck: adds pause/resume fades and crossfade on manual skip. */
+        val session: Player = object : ForwardingPlayer(player) {
+            override fun play() = playWithFade()
+            override fun pause() = pauseWithFade()
+            override fun setPlayWhenReady(playWhenReady: Boolean) = if (playWhenReady) playWithFade() else pauseWithFade()
+            override fun seekToNext() { if (!crossfadeSkip(next = true)) super.seekToNext() }
+            override fun seekToNextMediaItem() { if (!crossfadeSkip(next = true)) super.seekToNextMediaItem() }
+            override fun seekToPrevious() {
+                if (player.currentPosition > 3000 || !crossfadeSkip(next = false)) super.seekToPrevious()
+            }
+            override fun seekToPreviousMediaItem() { if (!crossfadeSkip(next = false)) super.seekToPreviousMediaItem() }
+        }
+    }
+
+    private var cur = Deck(handleFocus = true).also { it.tap = true }
+
+    /** The player of the current deck (changes at each crossfade: never keep it, never add listeners to it directly). */
+    val main: ExoPlayer get() = cur.player
+    val sessionPlayer: Player get() = cur.session
+
+    /** Called when another deck became the current one: the MediaSession must be given this player. */
+    var onSwap: (Player) -> Unit = {}
+
+    private val listeners = mutableListOf<Player.Listener>()
+
+    /** Listener that follows the current deck through crossfades. */
+    fun addListener(l: Player.Listener) { listeners += l; cur.player.addListener(l) }
+
     private val handler = Handler(Looper.getMainLooper())
 
     private sealed interface Xf {
         data object Idle : Xf
-        data class Preparing(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, var seeked: Boolean = false) : Xf
-        /** Aux plays silently until its sound really comes out, in step with main; only then the hand-over happens. */
-        data class Syncing(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, var since: Long, var tries: Int = 0, var steady: Int = 0) : Xf
-        /**
-         * Both players sound the same outgoing song, in step: main fades out while aux fades in over a few tenths of
-         * a second, so any tiny remaining offset is smoothed instead of heard as a skip or a repeated bit.
-         */
-        data class HandOver(val aux: ExoPlayer, val next: Boolean, val manual: Boolean, val start: Long) : Xf
-        data class Fading(val aux: ExoPlayer, val start: Long, val durationMs: Long) : Xf
+        /** [next] is loaded on the incoming song, paused, waiting for the fade to begin. */
+        class Preparing(val next: Deck, val manual: Boolean, val fromId: String, val auto: DjPlan?) : Xf
+        /** [out] finishes the outgoing song while the current deck plays the incoming one. */
+        class Fading(val out: Deck, val start: Long, val durationMs: Long) : Xf
     }
     private var xf: Xf = Xf.Idle
+
+    /** Song for which a crossfade was given up (too short, error): not tried again until the song changes. */
+    private var noRetryId: String? = null
 
     // Volume = pause/resume fade × crossfade gain.
     private var fadeGain = 1f
     private var xfadeGain = 1f
-    private var auxOutGain = 1f
+    private var outGain = 1f
     private var fadeAnim: Runnable? = null
 
-    private var handGain = 0f
-
     private fun applyVolume() {
-        val s = xf
-        if (s is Xf.HandOver) {
-            main.volume = fadeGain * (1f - handGain)
-            s.aux.volume = fadeGain * handGain
-            return
-        }
-        main.volume = fadeGain * xfadeGain
-        (s as? Xf.Fading)?.aux?.volume = fadeGain * auxOutGain
+        cur.player.volume = fadeGain * xfadeGain
+        (xf as? Xf.Fading)?.out?.player?.volume = fadeGain * outGain
     }
 
-    val sessionPlayer: Player = object : ForwardingPlayer(main) {
-        override fun play() = playWithFade()
-        override fun pause() = pauseWithFade()
-        override fun setPlayWhenReady(playWhenReady: Boolean) = if (playWhenReady) playWithFade() else pauseWithFade()
-        override fun seekToNext() { if (!crossfadeSkip(next = true)) super.seekToNext() }
-        override fun seekToNextMediaItem() { if (!crossfadeSkip(next = true)) super.seekToNextMediaItem() }
-        override fun seekToPrevious() {
-            if (main.currentPosition > 3000 || !crossfadeSkip(next = false)) super.seekToPrevious()
+    /** On the current deck only. */
+    private val curListener = object : Player.Listener {
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            // Covers audio focus loss (calls), headphones unplugged, end of queue…
+            if (!playWhenReady) cancelCrossfade()
         }
-        override fun seekToPreviousMediaItem() { if (!crossfadeSkip(next = false)) super.seekToPreviousMediaItem() }
+        override fun onPlayerError(error: PlaybackException) = cancelCrossfade()
+        override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+            // Queue edited while the next deck waits with the old queue: drop it, it is prepared again.
+            if (xf is Xf.Preparing) cancelCrossfade()
+        }
     }
 
     private val tick = object : Runnable {
@@ -86,13 +114,7 @@ class CrossfadeController(private val context: Context) {
     }
 
     init {
-        main.addListener(object : Player.Listener {
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                // Covers audio focus loss (calls), headphones unplugged, end of queue…
-                if (!playWhenReady) cancelCrossfade()
-            }
-            override fun onPlayerError(error: PlaybackException) = cancelCrossfade()
-        })
+        cur.player.addListener(curListener)
         handler.post(tick)
     }
 
@@ -101,66 +123,54 @@ class CrossfadeController(private val context: Context) {
             is Xf.Fading -> {
                 val t = (SystemClock.elapsedRealtime() - s.start).toFloat() / s.durationMs
                 val (gIn, gOut) = Fades.crossfadeGains(t)
-                xfadeGain = gIn; auxOutGain = gOut
+                xfadeGain = gIn; outGain = gOut
                 applyVolume()
                 djPlan?.let { dj ->
                     // Bass swap over ~2 beats around the middle: incoming bass comes in as the outgoing bass goes out.
                     val w = ((dj.beatMs ?: 500.0) * 2 / s.durationMs).toFloat().coerceIn(0.05f, 0.4f)
                     val x = ((t - (0.5f - w / 2)) / w).coerceIn(0f, 1f)
-                    mainBassCut = BASS_CUT * (1 - x); auxBassCut = BASS_CUT * x
+                    cur.bassCut = BASS_CUT * (1 - x); s.out.bassCut = BASS_CUT * x
                     // Ease the incoming tempo back to normal over the last quarter.
                     if (dj.inSpeed != 1.0 && t > 0.75f) {
                         val k = ((t - 0.75f) / 0.25f).coerceIn(0f, 1f)
                         val target = (userSpeed * (dj.inSpeed + (1 - dj.inSpeed) * k)).toFloat()
-                        // Small steps: the audio output changes its tempo smoothly (no restart of the processing).
-                        if (kotlin.math.abs(target - main.playbackParameters.speed) >= 0.004f || k >= 1f && target != main.playbackParameters.speed) {
-                            main.playbackParameters = androidx.media3.common.PlaybackParameters(target, 1f)
+                        val now = cur.player.playbackParameters.speed
+                        if (kotlin.math.abs(target - now) >= 0.004f || k >= 1f && target != now) {
+                            cur.player.playbackParameters = PlaybackParameters(target, 1f)
                         }
                     }
                 }
                 if (t >= 1f) cancelCrossfade()
             }
             is Xf.Preparing -> {
-                // Automatic transition reached its end before aux was ready: give up, main plays on gaplessly.
-                if (!s.manual && !main.isPlaying) cancelCrossfade()
-            }
-            is Xf.Syncing -> {
-                if (!main.isPlaying) { cancelCrossfade(); return }
-                val now = SystemClock.elapsedRealtime()
-                val waited = now - s.since
-                if (waited > 5000) { cancelCrossfade(); return }
-                // The audio clock of a just-started player needs ~half a second to be exact.
-                if (!s.aux.isPlaying || waited < 500) return
-                val drift = main.currentPosition - s.aux.currentPosition
-                if (kotlin.math.abs(drift) > 25 && s.tries < 4) {
-                    s.aux.seekTo(s.aux.currentPosition + drift + 20)
-                    s.since = now; s.tries++; s.steady = 0
-                } else if (++s.steady >= 3 || s.tries >= 4) {
-                    // In step on three readings in a row: hand the outgoing song over smoothly.
-                    handGain = 0f
-                    xf = Xf.HandOver(s.aux, s.next, s.manual, now)
-                    applyVolume()
+                val a = cur.player
+                // The song changed meanwhile (skip, or it ended before the next deck was ready): give up.
+                if (a.currentMediaItem?.mediaId != s.fromId) { cancelCrossfade(); return }
+                if (!a.isPlaying && a.playbackState != Player.STATE_BUFFERING) { cancelCrossfade(); return }
+                if (s.next.player.playbackState != Player.STATE_READY) return
+                val remaining = a.duration - a.currentPosition
+                when {
+                    s.manual -> start(s, settings.crossfadeSec * 1000L)
+                    s.auto != null -> if (a.currentPosition >= s.auto.startAtMs) start(s, minOf(s.auto.fadeMs, remaining))
+                    else -> if (remaining <= settings.crossfadeSec * 1000L) start(s, remaining)
                 }
-            }
-            is Xf.HandOver -> {
-                if (!main.isPlaying) { cancelCrossfade(); return }
-                handGain = ((SystemClock.elapsedRealtime() - s.start) / HAND_OVER_MS.toFloat()).coerceIn(0f, 1f)
-                applyVolume()
-                if (handGain >= 1f) go(s.aux, s.next, s.manual)
             }
             Xf.Idle -> {
                 val st = settings
-                if (!main.isPlaying || main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return
+                val a = cur.player
+                val id = a.currentMediaItem?.mediaId
+                if (id != noRetryId) noRetryId = null
+                if (!a.isPlaying || a.repeatMode == Player.REPEAT_MODE_ONE || !a.hasNextMediaItem() || id == null || noRetryId != null) return
                 if (st.autoMix) {
                     val plan = autoPlan()
-                    if (plan != null && main.currentPosition >= plan.startAtMs - Fades.PREPARE_LEAD_MS && main.currentPosition < plan.startAtMs + plan.fadeMs) {
-                        prepare(next = true, manual = false)
+                    if (plan != null && a.currentPosition >= plan.startAtMs - Fades.PREPARE_LEAD_MS && a.currentPosition < plan.startAtMs + plan.fadeMs) {
+                        prepare(a.nextMediaItemIndex, manual = false, startPos = plan.inStartMs, auto = plan)
                     }
                     return
                 }
                 if (!st.crossfadeEnabled || st.crossfadeSec == 0) return
-                if (Fades.shouldPrepareCrossfade(main.duration, main.currentPosition, st.crossfadeSec * 1000L)) {
-                    prepare(next = true, manual = false)
+                if (Fades.shouldPrepareCrossfade(a.duration, a.currentPosition, st.crossfadeSec * 1000L)) {
+                    prepare(a.nextMediaItemIndex, manual = false, startPos = 0, auto = null)
                 }
             }
         }
@@ -168,63 +178,55 @@ class CrossfadeController(private val context: Context) {
 
     private fun crossfadeSkip(next: Boolean): Boolean {
         val s = settings
-        if (!s.crossfadeEnabled || !s.crossfadeOnSkip || s.crossfadeSec == 0 || !main.isPlaying || xf != Xf.Idle) return false
-        if (next && !main.hasNextMediaItem()) return false
-        if (!next && !main.hasPreviousMediaItem()) return false
-        prepare(next, manual = true)
-        return true
+        val a = cur.player
+        if (!s.crossfadeEnabled || !s.crossfadeOnSkip || s.crossfadeSec == 0 || !a.isPlaying || xf != Xf.Idle) return false
+        if (next && !a.hasNextMediaItem()) return false
+        if (!next && !a.hasPreviousMediaItem()) return false
+        prepare(if (next) a.nextMediaItemIndex else a.previousMediaItemIndex, manual = true, startPos = 0, auto = null)
+        return xf is Xf.Preparing
     }
 
-    /** Loads the outgoing item on a fresh aux player, paused, at main's position. */
-    private fun prepare(next: Boolean, manual: Boolean) {
-        val item = main.currentMediaItem ?: return
-        val a = buildPlayer(context, handleFocus = false, exactSeek = true) { auxBassCut }
-        val p = Xf.Preparing(a, next, manual)
-        xf = p
-        a.setMediaItem(item, main.currentPosition)
-        a.playWhenReady = false
-        a.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                if (xf !== p || state != Player.STATE_READY) return
-                if (!p.seeked) {
-                    // Main kept playing while aux loaded: catch up to where main is now, then go.
-                    p.seeked = true
-                    a.seekTo(main.currentPosition + 30)
-                } else {
-                    // Start aux muted; main keeps sounding until aux is really audible (see Syncing).
-                    a.volume = 0f
-                    xf = Xf.Syncing(a, p.next, p.manual, SystemClock.elapsedRealtime())
-                    a.play()
-                }
-            }
-            override fun onPlayerError(error: PlaybackException) { if (xf === p) cancelCrossfade() }
+    /** Loads a fresh deck with the same queue, on song [target], paused and silent. */
+    private fun prepare(target: Int, manual: Boolean, startPos: Long, auto: DjPlan?) {
+        val a = cur.player
+        val id = a.currentMediaItem?.mediaId ?: return
+        if (target < 0 || target >= a.mediaItemCount) return
+        val d = Deck(handleFocus = false)
+        val p = Xf.Preparing(d, manual, id, auto)
+        d.player.volume = 0f
+        d.player.setMediaItems(List(a.mediaItemCount) { a.getMediaItemAt(it) }, target, startPos)
+        d.player.playWhenReady = false
+        d.player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) { if (xf === p) { noRetryId = id; cancelCrossfade() } }
         })
-        a.prepare()
+        xf = p
+        d.player.prepare()
     }
 
     // --- Mix automatique: analyse the end of the current track and the start of the next one ---
     private var planKey: String? = null
-    @Volatile private var plan: fr.offlinetune.core.playback.DjPlan? = null
+    @Volatile private var plan: DjPlan? = null
     private val analysis = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private var djPlan: fr.offlinetune.core.playback.DjPlan? = null
+    private var djPlan: DjPlan? = null
     private var userSpeed = 1f
 
     /** Plan for (current, next), computed in the background once the current track's duration is known. */
-    private fun autoPlan(): fr.offlinetune.core.playback.DjPlan? {
-        val cur = main.currentMediaItem ?: return null
-        val nextIndex = main.nextMediaItemIndex.takeIf { it >= 0 } ?: return null
-        val next = main.getMediaItemAt(nextIndex)
-        val dur = main.duration.takeIf { it > 0 } ?: return null
-        val key = cur.mediaId + "|" + next.mediaId + "|" + dur
+    private fun autoPlan(): DjPlan? {
+        val a = cur.player
+        val c = a.currentMediaItem ?: return null
+        val nextIndex = a.nextMediaItemIndex.takeIf { it >= 0 } ?: return null
+        val next = a.getMediaItemAt(nextIndex)
+        val dur = a.duration.takeIf { it > 0 } ?: return null
+        val key = c.mediaId + "|" + next.mediaId + "|" + dur
         if (key != planKey) {
             planKey = key; plan = null
             val manual = settings.crossfadeSec.coerceAtLeast(2) * 1000L
             val tailStart = (dur - 40_000).coerceAtLeast(0)
             analysis.execute {
                 // Loudness (100 ms) for the outro/silences, fine envelope (10 ms) for the tempo and the beats.
-                val out = AudioAnalyzer.envelope(context, cur.mediaId, tailStart, dur) ?: FloatArray(0)
+                val out = AudioAnalyzer.envelope(context, c.mediaId, tailStart, dur) ?: FloatArray(0)
                 val inn = AudioAnalyzer.envelope(context, next.mediaId, 0, 15_000) ?: FloatArray(0)
-                val outFine = AudioAnalyzer.envelope(context, cur.mediaId, tailStart, dur, 10)
+                val outFine = AudioAnalyzer.envelope(context, c.mediaId, tailStart, dur, 10)
                 val inFine = AudioAnalyzer.envelope(context, next.mediaId, 0, 20_000, 10)
                 val outBeats = outFine?.let { fr.offlinetune.core.playback.BeatAnalyzer.analyze(it) }?.let { it.copy(firstBeatMs = it.firstBeatMs + tailStart) }
                 val inBeats = inFine?.let { fr.offlinetune.core.playback.BeatAnalyzer.analyze(it) }
@@ -235,46 +237,52 @@ class CrossfadeController(private val context: Context) {
         return plan
     }
 
-    private fun go(aux: ExoPlayer, next: Boolean, manual: Boolean) {
-        val p = object { val aux = aux; val next = next; val manual = manual }
-        val auto = if (!p.manual && settings.autoMix) plan else null
-        val fadeMs = when {
-            p.manual -> settings.crossfadeSec * 1000L
-            auto != null -> minOf(auto.fadeMs, main.duration - main.currentPosition)
-            else -> main.duration - main.currentPosition
-        }
-        if (fadeMs < 300) { cancelCrossfade(); return }
-        auxOutGain = 1f
-        xf = Xf.Fading(p.aux, SystemClock.elapsedRealtime(), fadeMs)
-        xfadeGain = 0f
+    /** The fade begins: the prepared deck starts playing and becomes the current one; the other one fades out. */
+    private fun start(p: Xf.Preparing, fadeMs: Long) {
+        if (fadeMs < 300) { noRetryId = p.fromId; cancelCrossfade(); return }
+        val a = cur
+        val b = p.next
+        userSpeed = a.player.playbackParameters.speed
+        b.player.repeatMode = a.player.repeatMode
+        // Mix automatique: incoming track at the outgoing tempo during the transition (pitch kept).
+        val inSpeed = p.auto?.inSpeed ?: 1.0
+        b.player.playbackParameters = PlaybackParameters((inSpeed * userSpeed).toFloat(), 1f)
+
+        // The outgoing deck only finishes its song, on its own.
+        a.player.removeListener(curListener)
+        listeners.forEach { a.player.removeListener(it) }
+        a.player.pauseAtEndOfMediaItems = true
+        a.player.setAudioAttributes(AUDIO_ATTRIBUTES, false)
+        a.player.setHandleAudioBecomingNoisy(false)
+        a.tap = false
+
+        b.player.setAudioAttributes(AUDIO_ATTRIBUTES, true)
+        b.player.setHandleAudioBecomingNoisy(true)
+        b.tap = true
+        cur = b
+        djPlan = p.auto
+        if (p.auto != null) { b.bassCut = BASS_CUT; a.bassCut = 0f }
+        xfadeGain = 0f; outGain = 1f
+        xf = Xf.Fading(a, SystemClock.elapsedRealtime(), fadeMs)
         applyVolume()
-        if (p.next) {
-            // Mix automatique: the next track starts after its leading silence.
-            if (auto != null && main.nextMediaItemIndex >= 0) {
-                djPlan = auto
-                userSpeed = main.playbackParameters.speed
-                main.seekTo(main.nextMediaItemIndex, auto.inStartMs)
-                // Incoming track at the outgoing tempo during the transition (pitch kept).
-                if (auto.inSpeed != 1.0) main.playbackParameters = androidx.media3.common.PlaybackParameters((auto.inSpeed * userSpeed).toFloat(), 1f)
-                mainBassCut = BASS_CUT; auxBassCut = 0f
-            } else main.seekToNextMediaItem()
-        } else main.seekToPreviousMediaItem()
+        b.player.addListener(curListener)
+        listeners.forEach { b.player.addListener(it) }
+        b.player.play()
+        onSwap(b.session)
     }
 
     private fun cancelCrossfade() {
         when (val s = xf) {
-            is Xf.Preparing -> s.aux.release()
-            is Xf.Syncing -> s.aux.release()
-            is Xf.HandOver -> s.aux.release()
-            is Xf.Fading -> s.aux.release()
+            is Xf.Preparing -> s.next.player.release()
+            is Xf.Fading -> s.out.player.release()
             Xf.Idle -> {}
         }
         xf = Xf.Idle
-        if (djPlan?.inSpeed?.let { it != 1.0 } == true) main.playbackParameters = androidx.media3.common.PlaybackParameters(userSpeed, 1f)
+        if (djPlan?.inSpeed?.let { it != 1.0 } == true) cur.player.playbackParameters = PlaybackParameters(userSpeed, 1f)
         djPlan = null
-        mainBassCut = 0f; auxBassCut = 0f
+        cur.bassCut = 0f
         xfadeGain = 1f
-        auxOutGain = 1f
+        outGain = 1f
         applyVolume()
     }
 
@@ -286,7 +294,7 @@ class CrossfadeController(private val context: Context) {
         animateFade(to = 1f) {}
     }
 
-    /** Fades both players down together, then pauses (the crossfade is dropped by main's listener). */
+    /** Fades both decks down together, then pauses (the crossfade is dropped by the current deck's listener). */
     private fun pauseWithFade() {
         cancelFade()
         if (!settings.pauseFade || !main.isPlaying) { main.pause(); fadeGain = 1f; applyVolume(); return }
@@ -317,20 +325,15 @@ class CrossfadeController(private val context: Context) {
         handler.removeCallbacksAndMessages(null)
         analysis.shutdownNow()
         cancelCrossfade()
-        main.release()
+        cur.player.release()
     }
 
     companion object {
         private const val PAUSE_FADE_MS = 250L
-        private const val HAND_OVER_MS = 300L
         private const val BASS_CUT = -24f
+        private val AUDIO_ATTRIBUTES = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build()
 
-        /**
-         * [exactSeek]: MP3 files are normally positioned approximately (the player then *believes* it is at the asked
-         * time while the sound is up to a few seconds off). The crossfade's second player must be at the very same
-         * place as the main one, so it reads the file's frames to land exactly (a little slower to get ready).
-         */
-        fun buildPlayer(context: Context, handleFocus: Boolean, tap: Boolean = false, exactSeek: Boolean = false, bassCut: () -> Float = { 0f }): ExoPlayer {
+        fun buildPlayer(context: Context, handleFocus: Boolean, tap: () -> Boolean = { false }, bassCut: () -> Float = { 0f }): ExoPlayer {
             val renderers = object : DefaultRenderersFactory(context) {
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
                     DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(DspAudioProcessor(bassCut, tap)))
@@ -339,19 +342,8 @@ class CrossfadeController(private val context: Context) {
                         .setEnableAudioTrackPlaybackParams(true)
                         .build()
             }
-            val builder = ExoPlayer.Builder(context, renderers)
-            if (exactSeek) builder.setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
-                    context,
-                    androidx.media3.extractor.DefaultExtractorsFactory()
-                        .setMp3ExtractorFlags(androidx.media3.extractor.mp3.Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING),
-                ),
-            )
-            return builder
-                .setAudioAttributes(
-                    AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
-                    handleFocus,
-                )
+            return ExoPlayer.Builder(context, renderers)
+                .setAudioAttributes(AUDIO_ATTRIBUTES, handleFocus)
                 .setHandleAudioBecomingNoisy(handleFocus)
                 .setWakeMode(C.WAKE_MODE_LOCAL)
                 .build()
